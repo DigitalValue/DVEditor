@@ -1,0 +1,725 @@
+/* NativeRichEditor */
+.native-rich-editor {
+    /* border: 1px solid #e2e8f0; */
+    /* box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06); */
+    border-radius: 0.75rem;
+    background-color: #ffffff;
+    overflow: hidden;
+
+    border: 1px solid rgb(204, 204, 204);
+    border-radius: 0.285714rem;
+}
+
+.native-rich-editor__toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    overflow-x: auto;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.native-rich-editor__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0.4rem;
+    min-width: 2rem;
+    height: 2rem;
+    border-radius: 0.375rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #475569;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.native-rich-editor__button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+    box-shadow: none;
+}
+
+.native-rich-editor__button:hover {
+    background: #ffffff;
+    border-color: #e2e8f0;
+    color: #1d4ed8;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.native-rich-editor__button.is-active {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.native-rich-editor__button--lang.has-translation:not(.is-active) .native-rich-editor__button-icon {
+    background: rgba(34, 197, 94, 0.18);
+    color: #166534;
+}
+
+.native-rich-editor__button--lang.has-translation:not(.is-active):hover .native-rich-editor__button-icon {
+    background: rgba(34, 197, 94, 0.28);
+}
+
+.native-rich-editor__button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.native-rich-editor__button-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    border-radius: 0.25rem;
+    /* background: #e2e8f0; */
+    color: #1f2937;
+    font-weight: 600;
+    font-size: 0.75rem;
+    letter-spacing: 0.02em;
+}
+
+.native-rich-editor__button-icon svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+    stroke-width: 2;
+}
+
+.native-rich-editor__button-label {
+    display: none;
+}
+
+.native-rich-editor__button--source {
+    margin-left: auto;
+}
+
+.native-rich-editor__separator {
+    width: 1px;
+    height: 1.5rem;
+    background: #cbd5e1;
+    margin: 0 0.25rem;
+    flex-shrink: 0;
+}
+
+.native-rich-editor__button-label {
+    font-weight: 500;
+}
+
+.native-rich-editor__button.is-active .native-rich-editor__button-icon {
+    background: #bfdbfe;
+    color: #1d4ed8;
+}
+
+.native-rich-editor__surface {
+    background: #ffffff;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.native-rich-editor__content {
+    min-height: 180px;
+    padding: 1rem 1.25rem;
+    font-size: 0.95rem;
+    line-height: 1.65;
+    color: #1f2937;
+    outline: none;
+    background: #ffffff;
+}
+
+.native-rich-editor__content h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    line-height: 1.3;
+    margin: 1.5rem 0 0.75rem 0;
+    color: #1e293b;
+}
+
+.native-rich-editor__content h1:first-child {
+    margin-top: 0;
+}
+
+.native-rich-editor__content h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.35;
+    margin: 1.25rem 0 0.75rem 0;
+    color: #1e293b;
+}
+
+.native-rich-editor__content h2:first-child {
+    margin-top: 0;
+}
+
+.native-rich-editor__content:empty:before {
+    content: attr(data-placeholder);
+    color: #94a3b8;
+    pointer-events: none;
+}
+
+.native-rich-editor__content p {
+    margin: 0 0 0.75rem;
+}
+
+.native-rich-editor__content p:last-child {
+    margin-bottom: 0;
+}
+
+.native-rich-editor__content ul,
+.native-rich-editor__content ol {
+    margin: 0.5rem 0 0.75rem;
+    padding-left: 1.5rem;
+}
+
+.native-rich-editor__content blockquote {
+    margin: 1rem 0 0.75rem 0;
+    padding: 0.75rem 1rem;
+    padding-left: 1rem;
+    border-left: 3px solid #cbd5e1;
+    background-color: #f8fafc;
+    color: #475569;
+    font-style: italic;
+    border-radius: 0 0.375rem 0.375rem 0;
+}
+
+.native-rich-editor__content img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 0.5rem 0 0.75rem;
+    cursor: pointer;
+}
+
+/* Overlay de selección de imagen (F3.3) */
+.native-rich-editor__image-overlay {
+    position: absolute;
+    border: 2px solid #3b82f6;
+    pointer-events: none;
+    z-index: 1000;
+    box-sizing: border-box;
+}
+
+.native-rich-editor__image-resize-handle {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: #3b82f6;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    pointer-events: all;
+    cursor: nwse-resize;
+    z-index: 1001;
+}
+
+.native-rich-editor__image-resize-handle[data-position="ne"] {
+    cursor: nesw-resize;
+}
+
+.native-rich-editor__image-resize-handle[data-position="sw"] {
+    cursor: nesw-resize;
+}
+
+.native-rich-editor__image-resize-handle[data-position="se"] {
+    cursor: nwse-resize;
+}
+
+.native-rich-editor__image-resize-handle[data-position="nw"] {
+    cursor: nwse-resize;
+}
+
+/* Toolbar de alineación de imagen (F4.2) */
+.native-rich-editor__image-toolbar {
+    position: absolute;
+    display: none;
+    z-index: 1002;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    padding: 0.25rem;
+    display: inline-flex;
+    gap: 0.25rem;
+    pointer-events: all;
+}
+
+.native-rich-editor__image-toolbar-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #475569;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.native-rich-editor__image-toolbar-button:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #1d4ed8;
+}
+
+.native-rich-editor__image-toolbar-button.is-active {
+    background: #dbeafe;
+    border-color: #93c5fd;
+    color: #1d4ed8;
+}
+
+.native-rich-editor__image-toolbar-button svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+    stroke-width: 2;
+}
+
+.native-rich-editor__image-toolbar-button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.native-rich-editor__content--dragging {
+    background-color: #eff6ff !important;
+    border: 2px dashed #3b82f6 !important;
+    border-radius: 0.5rem;
+}
+
+.native-rich-editor__source {
+    display: none;
+    width: 100%;
+    min-height: 400px;
+    max-height: 400px;
+    padding: 1rem 1.25rem;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    background: #0f172a;
+    color: #e2e8f0;
+}
+
+.native-rich-editor--source .native-rich-editor__content {
+    display: none;
+}
+
+.native-rich-editor--source .native-rich-editor__source {
+    display: block;
+}
+
+.native-rich-editor__inline-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 0.35rem 0.6rem;
+    border-radius: 0.5rem;
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #1f2937;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.native-rich-editor__inline-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.native-rich-editor__button--confirm {
+    background: #10b981 !important;
+    color: #ffffff !important;
+    border-color: #10b981 !important;
+}
+
+.native-rich-editor__button--confirm:hover {
+    background: #059669 !important;
+    border-color: #059669 !important;
+}
+
+.native-rich-editor__button--confirm .native-rich-editor__button-icon {
+    background: transparent;
+    color: inherit;
+}
+
+.native-rich-editor__button--cancel {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+    border-color: #ef4444 !important;
+}
+
+.native-rich-editor__button--cancel:hover {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+
+.native-rich-editor__button--cancel .native-rich-editor__button-icon {
+    background: transparent;
+    color: inherit;
+}
+
+@media (max-width: 640px) {
+    .native-rich-editor__inline-input {
+        min-width: 150px;
+    }
+
+    .native-rich-editor__toolbar {
+        gap: 0.2rem;
+        padding: 0.4rem 0.5rem;
+    }
+
+    .native-rich-editor__button {
+        min-width: 1.75rem;
+        height: 1.75rem;
+        padding: 0.3rem;
+    }
+}
+
+/* Tooltips profesionales */
+.native-rich-editor__tooltip {
+    position: absolute;
+    display: none;
+    padding: 0.4rem 0.6rem;
+    background: #1f2937;
+    color: #ffffff;
+    font-size: 0.75rem;
+    font-weight: 500;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    pointer-events: none;
+    z-index: 10000;
+    white-space: nowrap;
+    line-height: 1.4;
+    max-width: 300px;
+    word-wrap: break-word;
+    white-space: normal;
+}
+
+.native-rich-editor__tooltip::before {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid #1f2937;
+}
+
+.native-rich-editor__tooltip[data-position="bottom"]::before {
+    bottom: auto;
+    top: -4px;
+    border-top: none;
+    border-bottom: 4px solid #1f2937;
+}
+
+/* Popover flotante para enlaces */
+.native-rich-editor__popover {
+    position: absolute;
+    display: none;
+    z-index: 10000000001;
+    min-width: 280px;
+    max-width: 400px;
+}
+
+.native-rich-editor__popover-content {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    padding: 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.native-rich-editor__popover-input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 0.375rem;
+    background: #ffffff;
+    color: #1f2937;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.native-rich-editor__popover-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.native-rich-editor__popover-url-display {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    background: #f8fafc;
+    color: #1f2937;
+    font-size: 0.875rem;
+    word-break: break-all;
+    max-height: 4rem;
+    overflow-y: auto;
+}
+
+.native-rich-editor__popover-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.native-rich-editor__popover-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem;
+    min-width: 2rem;
+    height: 2rem;
+    border-radius: 0.375rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #475569;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.native-rich-editor__popover-button svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+    stroke-width: 2;
+}
+
+.native-rich-editor__popover-button--confirm {
+    background: #10b981 !important;
+    color: #ffffff !important;
+    border-color: #10b981 !important;
+}
+
+.native-rich-editor__popover-button--confirm:hover {
+    background: #059669 !important;
+    border-color: #059669 !important;
+}
+
+.native-rich-editor__popover-button--cancel {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+    border-color: #ef4444 !important;
+}
+
+.native-rich-editor__popover-button--cancel:hover {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+
+.native-rich-editor__popover-button--edit {
+    background: #3b82f6 !important;
+    color: #ffffff !important;
+    border-color: #3b82f6 !important;
+}
+
+.native-rich-editor__popover-button--edit:hover {
+    background: #2563eb !important;
+    border-color: #2563eb !important;
+}
+
+.native-rich-editor__popover-button--delete {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+    border-color: #ef4444 !important;
+}
+
+.native-rich-editor__popover-button--delete:hover {
+    background: #dc2626 !important;
+    border-color: #dc2626 !important;
+}
+
+.native-rich-editor__popover-button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* Slash Commands Dropdown (F4.1) */
+.native-rich-editor__slash-menu {
+    position: absolute;
+    display: none;
+    z-index: 10002;
+    min-width: 240px;
+    max-width: 320px;
+    max-height: 300px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    padding: 0.25rem;
+}
+
+.native-rich-editor__slash-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    user-select: none;
+}
+
+.native-rich-editor__slash-menu-item:hover,
+.native-rich-editor__slash-menu-item.is-selected {
+    background: #f1f5f9;
+}
+
+.native-rich-editor__slash-menu-item-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.25rem;
+    background: #e2e8f0;
+    color: #1f2937;
+    flex-shrink: 0;
+}
+
+.native-rich-editor__slash-menu-item-icon svg {
+    width: 16px;
+    height: 16px;
+    display: block;
+}
+
+.native-rich-editor__slash-menu-item.is-selected .native-rich-editor__slash-menu-item-icon {
+    background: #bfdbfe;
+    color: #1d4ed8;
+}
+
+.native-rich-editor__slash-menu-item-label {
+    flex: 1;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1f2937;
+}
+
+.native-rich-editor__slash-menu-item-description {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 0.125rem;
+}
+
+.native-rich-editor__slash-menu-item-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+/* Estilos de tablas */
+.native-rich-editor__content table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 0.75rem 0;
+    border: 1px solid #cbd5e1;
+}
+
+.native-rich-editor__content table td,
+.native-rich-editor__content table th {
+    border: 1px solid #cbd5e1;
+    padding: 0.5rem;
+    min-width: 100px;
+    min-height: 30px;
+    vertical-align: top;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.native-rich-editor__content table th {
+    background-color: #f8fafc;
+    font-weight: 600;
+    text-align: left;
+}
+
+.native-rich-editor__content table td:focus,
+.native-rich-editor__content table th:focus {
+    outline: 2px solid #3b82f6;
+    outline-offset: -2px;
+    background-color: #eff6ff;
+}
+
+/* Table toolbar (F4.3A) */
+.native-rich-editor__table-toolbar {
+    position: absolute;
+    display: none;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.5rem;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.06);
+    z-index: 10000;
+    pointer-events: auto;
+}
+
+.native-rich-editor__table-toolbar-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #475569;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.native-rich-editor__table-toolbar-button:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #1e293b;
+}
+
+.native-rich-editor__table-toolbar-button:active {
+    background: #e2e8f0;
+}
+
+.native-rich-editor__table-toolbar-button:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.native-rich-editor__table-toolbar-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+@media (max-width: 640px) {
+    .native-rich-editor__button-label {
+        display: none;
+    }
+}
