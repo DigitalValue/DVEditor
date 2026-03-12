@@ -213,44 +213,12 @@ export function formatHTML(htmlString) {
 }
 
 // ============================================
-// FUNCIONES DE SELECCIÓN
+// FUNCIONES DE CONFIGURACIÓN
 // ============================================
 
-export function saveSelection(state) {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) {
-        state.savedSelection = null;
-        return;
-    }
-
-    const range = selection.getRangeAt(0);
-    state.savedSelection = {
-        startContainer: range.startContainer,
-        startOffset: range.startOffset,
-        endContainer: range.endContainer,
-        endOffset: range.endOffset
-    };
-}
-
-export function restoreSelection(state) {
-    if (!state.savedSelection) return;
-
-    const selection = window.getSelection();
-    const range = document.createRange();
-
-    try {
-        range.setStart(state.savedSelection.startContainer, state.savedSelection.startOffset);
-        range.setEnd(state.savedSelection.endContainer, state.savedSelection.endOffset);
-
-        selection.removeAllRanges();
-        selection.addRange(range);
-    } catch (e) {
-        console.warn('Could not restore selection:', e);
-    }
-}
-
+// Tiptap maneja el estado del editor internamente
 export function configureExecCommandDefaults() {
-    document.execCommand('styleWithCSS', false, false);
+    // Ya no usamos execCommand, Tiptap maneja el formato
 }
 
 // ============================================
@@ -261,29 +229,7 @@ export function getNormalizedFormatBlockValue() {
     return 'p';
 }
 
-export function isSelectionInsideTag(tagName) {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return false;
-
-    const range = selection.getRangeAt(0);
-    let container = range.commonAncestorContainer;
-
-    while (container) {
-        if (container.nodeType === Node.ELEMENT_NODE && container.tagName.toLowerCase() === tagName.toLowerCase()) {
-            return true;
-        }
-        container = container.parentNode;
-    }
-    return false;
-}
-
-export function isCommandExplicitlyApplied(command) {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return false;
-
-    return document.queryCommandState(command);
-}
-
+// getCleanOutput se mantiene para compatibilidad pero usa Tiptap
 export function getCleanOutput(vnode) {
     const { state } = vnode;
     if (!state.editorEl) return '';
@@ -377,10 +323,9 @@ export function emitChange(vnode) {
 
 export function emitSourceChange(vnode) {
     const { state } = vnode;
-    if (!state.sourceEl) return;
 
-    const rawSource = state.sourceEl.value;
-    state.sourceValue = rawSource;
+    // Ya no comprobamos state.sourceEl porque usamos Monaco
+    const rawSource = state.sourceValue || '';
 
     const sanitized = sanitizeHtml(vnode, rawSource);
     const normalized = normalizeHtml(sanitized);
@@ -408,18 +353,41 @@ export function emitSourceChange(vnode) {
     }
 }
 
-export function updateActiveState(state) {
+// updateActiveState ahora usa Tiptap - obtener editor del state si está disponible
+export function updateActiveState(state, editor = null) {
     if (!state.active) return;
 
-    TOOLBAR_COMMANDS.forEach(cmd => {
-        const commandId = cmd.id;
+    // Obtener editor Tiptap del state si no se pasó como parámetro
+    const tiptapEditor = editor || state.tiptapEditor;
 
-        if (cmd.args && cmd.args.tagName) {
-            state.active[commandId] = isSelectionInsideTag(cmd.args.tagName);
-        } else {
-            state.active[commandId] = isCommandExplicitlyApplied(commandId);
-        }
-    });
+    // Si hay un editor Tiptap, usa sus comandos para verificar el estado
+    if (tiptapEditor) {
+        TOOLBAR_COMMANDS.forEach(cmd => {
+            const commandId = cmd.id;
+            let isActive = false;
+
+            switch (commandId) {
+                case 'bold': isActive = tiptapEditor.isActive('bold'); break;
+                case 'italic': isActive = tiptapEditor.isActive('italic'); break;
+                case 'underline': isActive = tiptapEditor.isActive('underline'); break;
+                case 'strike': isActive = tiptapEditor.isActive('strike'); break;
+                case 'code': isActive = tiptapEditor.isActive('code'); break;
+                case 'h1': isActive = tiptapEditor.isActive('heading', { level: 1 }); break;
+                case 'h2': isActive = tiptapEditor.isActive('heading', { level: 2 }); break;
+                case 'h3': isActive = tiptapEditor.isActive('heading', { level: 3 }); break;
+                case 'bulletList': isActive = tiptapEditor.isActive('bulletList'); break;
+                case 'orderedList': isActive = tiptapEditor.isActive('orderedList'); break;
+                case 'blockquote': isActive = tiptapEditor.isActive('blockquote'); break;
+                case 'codeBlock': isActive = tiptapEditor.isActive('codeBlock'); break;
+                case 'alignLeft': isActive = tiptapEditor.isActive({ textAlign: 'left' }); break;
+                case 'alignCenter': isActive = tiptapEditor.isActive({ textAlign: 'center' }); break;
+                case 'alignRight': isActive = tiptapEditor.isActive({ textAlign: 'right' }); break;
+                case 'alignJustify': isActive = tiptapEditor.isActive({ textAlign: 'justify' }); break;
+            }
+
+            state.active[commandId] = isActive;
+        });
+    }
 }
 
 export function applyFormatBlock(vnode, tagName) {

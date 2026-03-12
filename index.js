@@ -1,11 +1,36 @@
 /**
  * index.js - Punto de entrada del Editor
  * Componente Mithril que importa desde editor-core y editor-features
+ * Ahora con Tiptap para el editor visual
  */
 
 import './editor-features.js';
 
-// Importar desde editor-core
+// Imports de Tiptap desde npm
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import Underline from '@tiptap/extension-underline';
+import Link from '@tiptap/extension-link';
+import ImageResize from 'tiptap-extension-resize-image';
+import Placeholder from '@tiptap/extension-placeholder';
+import TextAlign from '@tiptap/extension-text-align';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
+import BubbleMenu from '@tiptap/extension-bubble-menu';
+
+// Importar extensión de Slash Commands
+import SlashCommands, { renderSlashCommands, slashCommandsList } from './slash-commands.js';
+
+// Imports de CodeMirror desde npm
+import CodeMirror from 'codemirror';
+import 'codemirror/lib/codemirror.css';
+import 'codemirror/mode/xml/xml.js';
+import 'codemirror/mode/htmlmixed/htmlmixed.js';
+import 'codemirror/mode/javascript/javascript.js';
+
+// Importar desde editor-core (solo lo necesario)
 import {
     ICONS,
     TOOLBAR_COMMANDS,
@@ -13,33 +38,23 @@ import {
     DEFAULT_LANG,
     SUPPORTED_LANGS,
     STYLE_ELEMENT_ID,
-    $,
-    btn,
-    hide,
-    show,
-    createToolbar,
     sanitizeUrl,
-    basicSanitize,
-    sanitizeHtml,
     normalizeHtml,
     formatHTML,
-    saveSelection,
-    restoreSelection,
-    configureExecCommandDefaults,
-    getNormalizedFormatBlockValue,
-    isSelectionInsideTag,
-    isCommandExplicitlyApplied,
-    getCleanOutput,
     getRawExternalValue,
     normalizeToTranslations,
     getTextForLang,
     getExternalValue,
     emitChange,
-    emitSourceChange,
-    updateActiveState,
-    applyFormatBlock,
-    isCursorAtEndOfInlineFormat
+    updateActiveState
 } from './editor-core.js';
+
+// Función simple de sanitización (Tiptap maneja sanitización internamente)
+function sanitizeHtml(vnode, html) {
+    if (!html) return '';
+    // Tiptap ya sanea el contenido, aquí solo pasamos el HTML
+    return html;
+}
 
 // Importar desde editor-features
 import {
@@ -59,23 +74,8 @@ import {
     // Images
     createImageOverlay,
     createImageToolbar,
-    showImageToolbar,
-    hideImageToolbar,
-    updateImageToolbarActiveState,
-    applyImageAlignment,
-    setupImageToolbarHandlers,
-    selectImage,
-    deselectImage,
-    updateImageOverlayPosition,
-    setupImageResizeHandlers,
-    handleImageClick,
-    registerBlobUrl,
-    revokeBlobUrl,
-    cleanupUnusedBlobUrls,
-    cleanupAllBlobUrls,
     createImageFileInput,
     insertImageContent,
-    applyImage,
     // Tables
     applyTable,
     createTableToolbar,
@@ -146,51 +146,41 @@ function createActiveState() {
 // - isCursorAtEndOfInlineFormat
 
 function applyCommand(vnode, command) {
-    const { state } = vnode;
-    if (!state.editorEl) return;
+    const commandId = typeof command === 'string' ? command : command.id;
 
-    configureExecCommandDefaults();
-
-    if (command === 'link') {
-        const selection = window.getSelection();
-        if (selection.rangeCount && !selection.isCollapsed) {
-            // Hay selección de texto, mostrar popover para crear enlace
-            const range = selection.getRangeAt(0);
-            const rect = range.getBoundingClientRect();
-            showPopover(rect.left + rect.width / 2, rect.bottom, '', 'edit', null);
-            setupPopoverEditHandlers(vnode);
-        }
-        return;
-    }
-
-    if (command === 'image') {
-        // Abrir selector de archivos
-        const input = createImageFileInput(vnode);
-        input.click();
-        return;
-    }
-
-    if (command === 'table') {
-        applyTable(vnode);
-        return;
-    }
-
-    if (command === 'source') {
+    // El comando source siempre se maneja, incluso sin editor Tiptap
+    if (commandId === 'source') {
         toggleSourceView(vnode);
         return;
     }
 
-    if (command === 'formatBlock') {
-        // Ya manejado por applyFormatBlock
-        return;
+    const editor = vnode.state.tiptapEditor;
+    if (!editor) return;
+
+    // Redirigir las órdenes al motor de Tiptap
+    switch (commandId) {
+        case 'bold': editor.chain().focus().toggleBold().run(); break;
+        case 'italic': editor.chain().focus().toggleItalic().run(); break;
+        case 'underline': editor.chain().focus().toggleUnderline().run(); break;
+        case 'h1': editor.chain().focus().toggleHeading({ level: 1 }).run(); break;
+        case 'h2': editor.chain().focus().toggleHeading({ level: 2 }).run(); break;
+        case 'quote': editor.chain().focus().toggleBlockquote().run(); break;
+        case 'list': editor.chain().focus().toggleBulletList().run(); break;
+        case 'ordered': editor.chain().focus().toggleOrderedList().run(); break;
+        case 'table':
+            editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+            break;
+        case 'link':
+            const url = window.prompt('URL del enlace:');
+            if (url) editor.chain().focus().setLink({ href: url }).run();
+            break;
+        case 'image':
+            const imgUrl = window.prompt('URL de la imagen:');
+            if (imgUrl) editor.chain().focus().setImage({ src: imgUrl }).run();
+            break;
     }
 
-    if (command.id && state.editorEl) {
-        state.editorEl.focus();
-        document.execCommand(command.id, false, null);
-        updateActiveState(state);
-        emitChange(vnode);
-    }
+    // Tiptap dispara onUpdate automáticamente
 }
 
 // activateInlineInput viene de editor-features.js
@@ -200,7 +190,10 @@ function activateInlineInput(vnode, mode) {
     if (!state.editorEl) {
         return;
     }
-    saveSelection(state);
+    // Guardar posición del cursor con Tiptap
+    if (state.tiptapEditor) {
+        state.savedTiptapState = state.tiptapEditor.getState();
+    }
     state.inlineInputMode = mode;
     state.inlineInputValue = '';
     m.redraw();
@@ -224,8 +217,8 @@ function confirmInlineInput(vnode) {
 
     if (value && state.inlineInputMode === 'link') {
         const validUrl = sanitizeUrl(value, 'link');
-        if (validUrl) {
-            document.execCommand('createLink', false, validUrl);
+        if (validUrl && state.tiptapEditor) {
+            state.tiptapEditor.chain().focus().setLink({ href: validUrl }).run();
         }
     }
 
@@ -245,7 +238,308 @@ function cancelInlineInput(vnode) {
     state.inlineInputMode = null;
     state.inlineInputValue = '';
     m.redraw();
-    restoreSelection(state);
+    // Restaurar foco en Tiptap
+    if (state.tiptapEditor) {
+        state.tiptapEditor.commands.focus();
+    }
+}
+
+// ============================================
+// MONACO EDITOR
+// ============================================
+
+
+// ============================================
+// FUNCIONES DE TIP TAP
+// ============================================
+
+// Tiptap ya se carga via import npm al inicio del archivo
+
+// ============================================
+// BUBBLE MENU - Menú flotante para enlaces
+// ============================================
+
+let bubbleMenuElement = null;
+
+function createBubbleMenuElement() {
+    if (bubbleMenuElement) return bubbleMenuElement;
+
+    bubbleMenuElement = document.createElement('div');
+    bubbleMenuElement.className = 'bubble-menu';
+    bubbleMenuElement.style.cssText = `
+        display: flex;
+        gap: 4px;
+        padding: 8px;
+        background: #1e1e1e;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    `;
+
+    // Botón de negrita
+    const boldBtn = document.createElement('button');
+    boldBtn.innerHTML = '<strong>B</strong>';
+    boldBtn.style.cssText = 'padding: 4px 8px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;';
+    boldBtn.onclick = () => {
+        const editor = window._bubbleMenuEditor;
+        if (editor) editor.chain().focus().toggleBold().run();
+    };
+
+    // Botón de cursiva
+    const italicBtn = document.createElement('button');
+    italicBtn.innerHTML = '<em>I</em>';
+    italicBtn.style.cssText = 'padding: 4px 8px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer; font-style: italic;';
+    italicBtn.onclick = () => {
+        const editor = window._bubbleMenuEditor;
+        if (editor) editor.chain().focus().toggleItalic().run();
+    };
+
+    // Botón de enlace
+    const linkBtn = document.createElement('button');
+    linkBtn.innerHTML = '🔗';
+    linkBtn.style.cssText = 'padding: 4px 8px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;';
+    linkBtn.onclick = () => {
+        const editor = window._bubbleMenuEditor;
+        if (editor) {
+            const url = window.prompt('URL del enlace:');
+            if (url) {
+                editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+            }
+        }
+    };
+
+    // Botón de解除 enlace
+    const unlinkBtn = document.createElement('button');
+    unlinkBtn.innerHTML = '✂️';
+    unlinkBtn.style.cssText = 'padding: 4px 8px; background: #333; color: white; border: none; border-radius: 4px; cursor: pointer;';
+    unlinkBtn.onclick = () => {
+        const editor = window._bubbleMenuEditor;
+        if (editor) editor.chain().focus().unsetLink().run();
+    };
+
+    bubbleMenuElement.appendChild(boldBtn);
+    bubbleMenuElement.appendChild(italicBtn);
+    bubbleMenuElement.appendChild(linkBtn);
+    bubbleMenuElement.appendChild(unlinkBtn);
+
+    return bubbleMenuElement;
+}
+
+function initTiptapEditor(vnode, container) {
+    console.log('Inicializando editor Tiptap con npm packages');
+
+    // Destruir editor anterior si existe
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.destroy();
+    }
+
+    console.log('Inicializando editor Tiptap, contenido:', vnode.state.lastEmittedValue ? vnode.state.lastEmittedValue.substring(0, 50) : 'vacío');
+
+    const editor = new Editor({
+        element: container,
+        extensions: [
+            StarterKit.configure({
+                heading: {
+                    levels: [1, 2, 3]
+                }
+            }),
+            Underline,
+            Link.configure({
+                openOnClick: false,
+                HTMLAttributes: {
+                    rel: 'noopener noreferrer',
+                    target: '_blank'
+                }
+            }),
+            ImageResize.configure({
+                inline: true,
+                allowBase64: true
+            }),
+            TextAlign.configure({
+                types: ['heading', 'paragraph']
+            }),
+            Table.configure({
+                resizable: true
+            }),
+            TableRow,
+            TableHeader,
+            TableCell,
+            Placeholder.configure({
+                placeholder: vnode.attrs.placeholder || 'Escribe algo aquí...'
+            }),
+            // Slash Commands - escribir "/" para ver menú
+            SlashCommands.configure({
+                suggestion: {
+                    char: '/',
+                    render: renderSlashCommands,
+                },
+            }),
+            // Bubble Menu - menú flotante para enlaces y formato
+            BubbleMenu.configure({
+                element: createBubbleMenuElement(),
+                tippyOptions: {
+                    duration: 100,
+                    placement: 'top',
+                    interactive: true,
+                },
+            })
+        ],
+        content: vnode.state.lastEmittedValue || '',
+        onUpdate: ({ editor }) => {
+            const html = editor.getHTML();
+            vnode.state.lastEmittedValue = html;
+
+            // Manejar multidioma correctamente
+            const rawExternal = getRawExternalValue(vnode.attrs);
+            const { translations } = normalizeToTranslations(rawExternal);
+
+            if (vnode.state.isMultiLang) {
+                const newTranslations = { ...translations };
+                newTranslations[vnode.state.currentLang] = html;
+                if (vnode.attrs.onchange) {
+                    vnode.attrs.onchange(JSON.stringify(newTranslations));
+                }
+            } else {
+                if (vnode.attrs.onchange) {
+                    vnode.attrs.onchange(html);
+                }
+            }
+        },
+        onSelectionUpdate: () => {
+            m.redraw();
+        },
+        onFocus: () => {
+            vnode.state.isFocused = true;
+            m.redraw();
+        },
+        onBlur: () => {
+            vnode.state.isFocused = false;
+            m.redraw();
+        }
+    });
+
+    vnode.state.tiptapEditor = editor;
+
+    // Guardar referencia global para los botones del BubbleMenu
+    window._bubbleMenuEditor = editor;
+
+    return editor;
+}
+
+// Funciones para la toolbar de Tiptap
+function toggleBold(vnode) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().toggleBold().run();
+    }
+}
+
+function toggleItalic(vnode) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().toggleItalic().run();
+    }
+}
+
+function toggleUnderline(vnode) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().toggleUnderline().run();
+    }
+}
+
+function toggleHeading(vnode, level) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().toggleHeading({ level }).run();
+    }
+}
+
+function toggleBulletList(vnode) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().toggleBulletList().run();
+    }
+}
+
+function toggleOrderedList(vnode) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().toggleOrderedList().run();
+    }
+}
+
+function toggleBlockquote(vnode) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().toggleBlockquote().run();
+    }
+}
+
+function setTextAlign(vnode, align) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().setTextAlign(align).run();
+    }
+}
+
+function insertLink(vnode, url) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().setLink({ href: url }).run();
+    }
+}
+
+function insertImage(vnode, src) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().setImage({ src }).run();
+    }
+}
+
+function insertTable(vnode, rows = 3, cols = 3) {
+    if (vnode.state.tiptapEditor) {
+        vnode.state.tiptapEditor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+    }
+}
+
+// ============================================
+// CODE MIRROR (Vista de código) - Ya no necesita carga CDN
+// ============================================
+
+function initCodeMirrorEditor(vnode, container) {
+    // Limpiar contenedor
+    container.innerHTML = '';
+
+    // Destruir editor anterior si existe
+    if (vnode.state.codeMirrorEditor) {
+        vnode.state.codeMirrorEditor.toTextArea();
+    }
+
+    // Crear textarea
+    const textarea = document.createElement('textarea');
+    textarea.value = vnode.state.sourceValue || '';
+    container.appendChild(textarea);
+
+    // Inicializar CodeMirror usando el import
+    const editor = CodeMirror.fromTextArea(textarea, {
+        mode: 'htmlmixed',
+        theme: 'default',
+        lineNumbers: true,
+        lineWrapping: true,
+        tabSize: 2,
+        indentWithTabs: false,
+        indentUnit: 2,
+        extraKeys: {
+            'Ctrl-Space': 'autocomplete'
+        }
+    });
+
+    // Guardar referencia
+    vnode.state.codeMirrorEditor = editor;
+
+    // Listener para cambios
+    editor.on('change', () => {
+        vnode.state.sourceValue = editor.getValue();
+        emitSourceChange(vnode);
+    });
+
+    editor.on('focus', () => {
+        vnode.state.isSourceFocused = true;
+    });
+
+    editor.on('blur', () => {
+        vnode.state.isSourceFocused = false;
+    });
 }
 
 // updateActiveState viene de editor-core.js
@@ -255,32 +549,65 @@ function toggleSourceView(vnode) {
     state.isSourceView = !state.isSourceView;
 
     hidePopover();
-    deselectImage();
     hideTableToolbar(vnode);
 
     if (state.isSourceView) {
-        const html = state.editorEl ? state.editorEl.innerHTML : state.lastEmittedValue;
+        // Entrar en modo código fuente - obtener contenido de Tiptap
+        let html = state.lastEmittedValue || '';
+        if (state.tiptapEditor) {
+            html = state.tiptapEditor.getHTML();
+            // Destruir editor Tiptap al entrar en modo código
+            state.tiptapEditor.destroy();
+            state.tiptapEditor = null;
+        }
         const sanitized = sanitizeHtml(vnode, html);
         const normalized = normalizeHtml(sanitized);
         const formatted = formatHTML(normalized);
         state.sourceValue = formatted;
-        if (state.sourceEl) {
-            state.sourceEl.value = formatted;
+
+        // Actualizar CodeMirror si está disponible
+        if (state.codeMirrorEditor) {
+            state.codeMirrorEditor.setValue(formatted);
         }
         updateActiveState(state);
+        m.redraw();
+
+        // Forzar inicialización de CodeMirror después del redraw
+        setTimeout(() => {
+            const container = document.getElementById('codemirror-container-' + state.editorId);
+            if (container && !state.codeMirrorEditor) {
+                initCodeMirrorEditor(vnode, container);
+            }
+        }, 50);
         return;
     }
 
-    const rawSource = state.sourceValue || '';
+    // Salir del modo código fuente - obtener valor de CodeMirror o del state
+    let rawSource = state.sourceValue || '';
+    if (state.codeMirrorEditor) {
+        rawSource = state.codeMirrorEditor.getValue();
+        state.sourceValue = rawSource;
+    }
+
     const unformatted = rawSource.replace(/\n\s*/g, ' ').replace(/\s+/g, ' ').trim();
     const sanitized = sanitizeHtml(vnode, unformatted);
     const normalized = normalizeHtml(sanitized);
-    if (state.editorEl && normalized !== normalizeHtml(state.editorEl.innerHTML)) {
-        state.editorEl.innerHTML = normalized;
+
+    // Guardar el contenido para el editor Tiptap
+    state.lastEmittedValue = normalized;
+
+    // Limpiar CodeMirror
+    if (state.codeMirrorEditor) {
+        state.codeMirrorEditor.toTextArea();
+        state.codeMirrorEditor = null;
     }
+
+    // No recreamos Tiptap aquí - Mithril redesenhará la vista
+    // y oncreate del div tiptap inicializará el editor
 
     updateActiveState(state);
     emitChange(vnode);
+    m.redraw();
 }
 
 // ============================================
@@ -290,6 +617,7 @@ function toggleSourceView(vnode) {
 export const NativeRichEditor = {
     oninit: (vnode) => {
         ensureInlineStyles();
+        // CodeMirror ya se carga via import npm
         const attrs = vnode.attrs || {};
         const { isMulti, translations } = normalizeToTranslations(getRawExternalValue(attrs));
 
@@ -306,6 +634,8 @@ export const NativeRichEditor = {
         vnode.state.sourceEl = null;
         vnode.state.sourceValue = '';
         vnode.state.savedSelection = null;
+        // Generar ID único para el editor
+        vnode.state.editorId = vnode.attrs.id || 'editor-' + Math.random().toString(36).substr(2, 9);
         vnode.state.pendingLinkSelection = null;
         vnode.state.pendingImageSelection = null;
         vnode.state.active = createActiveState();
@@ -328,11 +658,6 @@ export const NativeRichEditor = {
         }
         if (vnode.state._selectionChangeCleanup) {
             vnode.state._selectionChangeCleanup();
-        }
-        deselectImage();
-        if (imageOverlayElement && imageOverlayElement.parentNode) {
-            imageOverlayElement.parentNode.removeChild(imageOverlayElement);
-            imageOverlayElement = null;
         }
 
         if (imageToolbarElement && imageToolbarElement.parentNode) {
@@ -368,16 +693,17 @@ export const NativeRichEditor = {
         const normalizedExternal = normalizeHtml(sanitizedExternal);
 
         if (vnode.state.isSourceView) {
-            const sourceEl = vnode.state.sourceEl;
-            const currentSource = sourceEl ? sourceEl.value : vnode.state.sourceValue || '';
+            // Ya no usamos sourceEl, leemos el state o preguntamos a Monaco
+            const currentSource = vnode.state.codeMirrorEditor ? vnode.state.codeMirrorEditor.getValue() : vnode.state.sourceValue || '';
             const normalizedSource = normalizeHtml(sanitizeHtml(vnode, currentSource));
             const sizeDiff = Math.abs(normalizedExternal.length - normalizedSource.length);
             const isDrastic = !vnode.state.isSourceFocused || sizeDiff > 80;
 
             if (isDrastic && normalizedExternal !== normalizedSource) {
                 vnode.state.sourceValue = normalizedExternal;
-                if (sourceEl) {
-                    sourceEl.value = normalizedExternal;
+                // Si Monaco está activo, le inyectamos el nuevo valor
+                if (vnode.state.codeMirrorEditor && vnode.state.codeMirrorEditor.getValue() !== normalizedExternal) {
+                    vnode.state.codeMirrorEditor.setValue(normalizedExternal);
                 }
             }
             return;
@@ -420,7 +746,7 @@ export const NativeRichEditor = {
         const disableCollapseToString = isMultiLang && filledLangCount > 1;
 
         const syncSelectionState = () => {
-            saveSelection(vnode.state);
+            // Tiptap maneja el estado de selección automáticamente
             updateActiveState(vnode.state);
         };
         const handleInput = () => {
@@ -494,7 +820,19 @@ export const NativeRichEditor = {
                 const filteredCommands = TOOLBAR_COMMANDS.filter(cmd => supported_toolbar_commands.includes(cmd.id));
 
                 filteredCommands.forEach(cmd => {
-                    const isActive = vnode.state.active && vnode.state.active[cmd.id];
+                    // Magia de Tiptap: Saber si un botón debe estar iluminado
+                    let isActive = false;
+                    const editor = vnode.state.tiptapEditor;
+
+                    if (editor) {
+                        if (cmd.id === 'h1') isActive = editor.isActive('heading', { level: 1 });
+                        else if (cmd.id === 'h2') isActive = editor.isActive('heading', { level: 2 });
+                        else if (cmd.id === 'quote') isActive = editor.isActive('blockquote');
+                        else if (cmd.id === 'list') isActive = editor.isActive('bulletList');
+                        else if (cmd.id === 'ordered') isActive = editor.isActive('orderedList');
+                        else isActive = editor.isActive(cmd.id);
+                    }
+
                     const buttonClass = `native-rich-editor__button${isActive ? ' is-active' : ''}`;
 
                     let title = cmd.title || cmd.id;
@@ -575,137 +913,44 @@ export const NativeRichEditor = {
             })()
         ),
 
-            isSourceView ? m('textarea', {
-                class: 'native-rich-editor__source',
-                value: vnode.state.sourceValue,
-                oninput: (event) => {
-                    vnode.state.sourceValue = event.target.value;
-                    handleSourceInput();
-                },
-                onfocus: () => {
-                    vnode.state.isSourceFocused = true;
-                },
-                onblur: () => {
-                    vnode.state.isSourceFocused = false;
-                },
+            // Modo código fuente (CodeMirror) o modo visual (Tiptap)
+            isSourceView ? m('div', {
+                class: 'native-rich-editor__source-wrapper',
+                id: 'codemirror-container-' + vnode.state.editorId,
+                style: 'height: 400px; width: 100%; display: block;',
                 oncreate: (vnode2) => {
-                    vnode.state.sourceEl = vnode2.dom;
+                    if (!vnode.state.codeMirrorEditor) {
+                        initCodeMirrorEditor(vnode, vnode2.dom);
+                    }
+                },
+                onremove: () => {
+                    if (vnode.state.codeMirrorEditor) {
+                        vnode.state.codeMirrorEditor.toTextArea();
+                        vnode.state.codeMirrorEditor = null;
+                    }
                 }
             }) : m('div', {
-                class: 'native-rich-editor__surface',
-                oncreate: (vnode2) => {
-                    vnode.state.editorEl = vnode2.dom;
+                class: 'native-rich-editor__surface tiptap-wrapper'
+            }, [
+                m('div', {
+                    class: 'native-rich-editor__tiptap',
+                    oncreate: (vnode2) => {
+                        initTiptapEditor(vnode, vnode2.dom);
+                    },
+                    // PROTEGER A TIP TAP DE MITHRIL
+                    onbeforeupdate: () => false,
+                    // Los menús flotantes ahora los maneja Tiptap (BubbleMenu, Slash Commands)
+                    onclick: (event) => {
+                        const target = event.target;
 
-                    // Inicializar el contenido
-                    const rawExternal = getRawExternalValue(vnode.attrs);
-                    const { translations } = normalizeToTranslations(rawExternal);
-                    const value = getTextForLang(translations, vnode.state.currentLang);
-
-                    if (value) {
-                        vnode2.dom.innerHTML = value;
-                    }
-
-                    // Configurar event listeners
-                    const editorEl = vnode2.dom;
-
-                    // Event listeners para input
-                    editorEl.addEventListener('input', handleInput);
-
-                    // Event listeners para selección
-                    editorEl.addEventListener('keyup', (e) => {
-                        syncSelectionState();
-                    });
-
-                    editorEl.addEventListener('mouseup', (e) => {
-                        syncSelectionState();
-
-                        // Click en enlace
-                        const linkElement = e.target.closest('a');
-                        if (linkElement) {
-                            handleLinkClick(vnode, e, linkElement);
-                            setupPopoverViewHandlers(vnode);
-                        }
-
-                        // Click en imagen
-                        const imgElement = e.target.closest('img');
-                        if (imgElement) {
-                            handleImageClick(vnode, e, imgElement);
-                        }
-
-                        // Click en celda de tabla
-                        const cellElement = e.target.closest('td, th');
-                        if (cellElement) {
-                            handleTableCellClick(vnode, e, cellElement);
-                        }
-                    });
-
-                    // Event listener para teclado
-                    editorEl.addEventListener('keydown', (e) => {
-                        // Manejar Tab en tablas
-                        if (e.key === 'Tab' && selectedTableCell) {
-                            handleTableKeyboardNavigation(vnode, e);
+                        // Clic en celda de tabla
+                        if (target.tagName === 'TD' || target.tagName === 'TH') {
+                            handleTableCellClick(vnode, event, target);
                             return;
                         }
-
-                        // Manejar Slash Commands
-                        if (e.key === '/') {
-                            const result = handleSlashCommandKeydown(vnode, e);
-                            if (result) return;
-                        }
-
-                        // Manejar atajos de teclado
-                        if (e.ctrlKey || e.metaKey) {
-                            if (e.key === 'b') {
-                                e.preventDefault();
-                                applyCommand(vnode, { id: 'bold' });
-                            } else if (e.key === 'i') {
-                                e.preventDefault();
-                                applyCommand(vnode, { id: 'italic' });
-                            } else if (e.key === 'u') {
-                                e.preventDefault();
-                                applyCommand(vnode, { id: 'underline' });
-                            } else if (e.key === 'k') {
-                                e.preventDefault();
-                                applyCommand(vnode, { id: 'link' });
-                            }
-                        }
-                    });
-
-                    // Event listener para pegado limpio (paste)
-                    editorEl.addEventListener('paste', (e) => {
-                        e.preventDefault();
-                        const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-                        document.execCommand('insertText', false, text);
-                    });
-
-                    // Event listeners para drag & drop
-                    editorEl.addEventListener('dragover', handleDragOver);
-                    editorEl.addEventListener('dragenter', handleDragEnter);
-                    editorEl.addEventListener('dragleave', handleDragLeave);
-                    editorEl.addEventListener('drop', (e) => handleDrop(vnode, e));
-
-                    // Event listener para focus
-                    editorEl.addEventListener('focus', () => {
-                        vnode.state.isFocused = true;
-                        syncSelectionState();
-                    });
-
-                    editorEl.addEventListener('blur', () => {
-                        vnode.state.isFocused = false;
-                    });
-
-                    // Configurar handlers de toolbars
-                    setupImageToolbarHandlers(vnode);
-                    setupImageResizeHandlers(vnode);
-                    setupTableToolbarHandlers(vnode);
-
-                    // Crear image file input
-                    createImageFileInput(vnode);
-
-                    // Actualizar estado activo inicialmente
-                    updateActiveState(vnode.state);
-                }
-            }),
+                    }
+                })
+            ]),
 
             // Footer con character count (opcional)
             vnode.attrs.characterCount ? m('div', {
