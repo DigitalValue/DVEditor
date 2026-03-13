@@ -37,19 +37,26 @@
     <script>
         const container = document.getElementById('editor-container');
 
+        // Estado inicial vacío
+        let editorValue = '<p></p>';
+
         if (window.DVEditor && window.DVEditor.NativeRichEditor) {
             console.log('Editor cargado correctamente');
-            m.mount(container, {
-                view: () => {
+
+            const editor = {
+                view: function() {
                     return m(window.DVEditor.NativeRichEditor, {
-                        value: '<p>Hola mundo</p>',
+                        value: editorValue,
                         placeholder: 'Escribe algo aquí...',
-                        onchange: (value) => {
+                        onchange: function(value) {
                             console.log('Editor changed:', value);
+                            editorValue = value;
+                            m.redraw();
                         }
                     });
                 }
-            });
+            };
+            m.mount(container, editor);
         } else {
             container.innerHTML = '<p style="color:red">Error: Editor no cargado</p>';
             console.log('DVEditor:', window.DVEditor);
