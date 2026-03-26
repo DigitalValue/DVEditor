@@ -231,13 +231,8 @@ function applyCommand(vnode, command) {
             break;
         case 'link':
             // Si ya hay un enlace activo, el BubbleMenu se encarga de editarlo
-            if (editor.isActive('link')) {
-                // El BubbleMenu se mostrará automáticamente
-                break;
-            }
-            // Si no hay enlace activo pero hay selección, crear uno nuevo con prompt
-            const url = window.prompt('URL del enlace:');
-            if (url) editor.chain().focus().setLink({ href: url }).run();
+            // Si no, el BubbleMenu aparecerá automáticamente con el input para crear uno nuevo
+            editor.chain().focus();
             break;
         case 'image':
             // Usar onClickImage custom si está definido, si no fallback a prompt
@@ -335,12 +330,12 @@ function cancelInlineInput(vnode) {
 // BUBBLE MENU - Menú flotante para enlaces y para imágenes
 // ============================================
 
-function createBubbleMenuElement(vnode) {
+function createLinkBubbleMenu(vnode) {
     // Si ya existe para esta instancia, lo devolvemos
     if (vnode.state.linkBubbleMenuElement) return vnode.state.linkBubbleMenuElement;
 
     const menu = document.createElement('div');
-    menu.className = 'bubble-menu';
+    menu.className = 'bubble-menu bubble-menu--link';
     menu.style.cssText = `
         display: flex;
         align-items: center;
@@ -373,54 +368,121 @@ function createBubbleMenuElement(vnode) {
         return btn;
     };
 
-    // Botones de formato rápido en el menú de enlace
-    const boldBtn = createBtn('<strong>B</strong>', 'Negrita', () => {
-        const editor = vnode.state.tiptapEditor;
-        if (editor) editor.chain().focus().toggleBold().run();
-    });
-
-    const linkBtn = createBtn('🔗', 'Editar enlace', () => {
-        const editor = vnode.state.tiptapEditor;
-        if (!editor) return;
-        const attrs = editor.getAttributes('link');
-        vnode.state.linkInput.value = attrs.href || '';
-        vnode.state.linkInputContainer.style.display = 'flex';
-        setTimeout(() => vnode.state.linkInput.focus(), 10);
-    });
-
+    // Contenedor de input para crear/editar enlace
     vnode.state.linkInputContainer = document.createElement('div');
     vnode.state.linkInputContainer.style.cssText = 'display: none; align-items: center; gap: 6px; margin-left: 4px;';
 
     vnode.state.linkInput = document.createElement('input');
     vnode.state.linkInput.type = 'text';
     vnode.state.linkInput.placeholder = 'https://...';
-    vnode.state.linkInput.style.cssText = 'padding: 5px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a2a; color: #e0e0e0; font-size: 13px; width: 180px; outline: none;';
+    vnode.state.linkInput.style.cssText = 'padding: 5px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a2a; color: #e0e0e0; font-size: 13px; width: 220px; outline: none;';
     vnode.state.linkInput.onkeydown = (e) => {
         if (e.key === 'Enter') {
-            vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: vnode.state.linkInput.value.trim() }).run();
+            e.preventDefault();
+            const url = vnode.state.linkInput.value.trim();
+            if (url) {
+                if (vnode.state.linkEditMode) {
+                    vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+                } else {
+                    vnode.state.tiptapEditor.chain().focus().setLink({ href: url }).run();
+                }
+            }
             vnode.state.linkInputContainer.style.display = 'none';
+            vnode.state.linkEditMode = false;
+        }
+        if (e.key === 'Escape') {
+            vnode.state.linkInputContainer.style.display = 'none';
+            vnode.state.linkEditMode = false;
         }
     };
 
     const confirmLinkBtn = document.createElement('button');
     confirmLinkBtn.innerHTML = '✓';
+    confirmLinkBtn.title = 'Aplicar';
     confirmLinkBtn.style.cssText = 'padding: 5px 8px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;';
     confirmLinkBtn.onclick = () => {
-        vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: vnode.state.linkInput.value.trim() }).run();
+        const url = vnode.state.linkInput.value.trim();
+        if (url) {
+            if (vnode.state.linkEditMode) {
+                vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+            } else {
+                vnode.state.tiptapEditor.chain().focus().setLink({ href: url }).run();
+            }
+        }
         vnode.state.linkInputContainer.style.display = 'none';
+        vnode.state.linkEditMode = false;
+    };
+
+    const cancelLinkBtn = document.createElement('button');
+    cancelLinkBtn.innerHTML = '✕';
+    cancelLinkBtn.title = 'Cancelar';
+    cancelLinkBtn.style.cssText = 'padding: 5px 8px; background: #444; color: white; border: none; border-radius: 4px; cursor: pointer; margin-left: 2px;';
+    cancelLinkBtn.onclick = () => {
+        vnode.state.linkInputContainer.style.display = 'none';
+        vnode.state.linkEditMode = false;
     };
 
     vnode.state.linkInputContainer.appendChild(vnode.state.linkInput);
     vnode.state.linkInputContainer.appendChild(confirmLinkBtn);
+    vnode.state.linkInputContainer.appendChild(cancelLinkBtn);
 
+    // Botón para crear enlace (visible cuando NO hay link activo)
+    const createLinkBtn = createBtn('🔗', 'Crear enlace', () => {
+        const editor = vnode.state.tiptapEditor;
+        if (!editor) return;
+        vnode.state.linkInput.value = '';
+        vnode.state.linkInput.placeholder = 'https://...';
+        vnode.state.linkEditMode = false;
+        vnode.state.linkInputContainer.style.display = 'flex';
+        vnode.state.linkInput.style.display = 'block';
+        confirmLinkBtn.style.display = 'block';
+        cancelLinkBtn.style.display = 'inline-block';
+        setTimeout(() => vnode.state.linkInput.focus(), 10);
+    });
+
+    // Botón para editar enlace (visible cuando HAY link activo)
+    const editLinkBtn = createBtn('✏️', 'Editar enlace', () => {
+        const editor = vnode.state.tiptapEditor;
+        if (!editor) return;
+        const attrs = editor.getAttributes('link');
+        vnode.state.linkInput.value = attrs.href || '';
+        vnode.state.linkInput.placeholder = 'Editar URL...';
+        vnode.state.linkEditMode = true;
+        vnode.state.linkInputContainer.style.display = 'flex';
+        vnode.state.linkInput.style.display = 'block';
+        confirmLinkBtn.style.display = 'block';
+        cancelLinkBtn.style.display = 'inline-block';
+        setTimeout(() => vnode.state.linkInput.focus(), 10);
+    });
+
+    // Botón desvincular
     const unlinkBtn = createBtn('✂️', 'Quitar enlace', () => {
         vnode.state.tiptapEditor.chain().focus().unsetLink().run();
     });
 
-    menu.appendChild(boldBtn);
-    menu.appendChild(linkBtn);
-    menu.appendChild(vnode.state.linkInputContainer);
+    // Actualizar visibilidad de botones según el estado del enlace
+    function updateLinkMenuButtons() {
+        const editor = vnode.state.tiptapEditor;
+        if (!editor) return;
+        const isActive = editor.isActive('link');
+        createLinkBtn.style.display = isActive ? 'none' : 'block';
+        editLinkBtn.style.display = isActive ? 'block' : 'none';
+        unlinkBtn.style.display = isActive ? 'block' : 'none';
+    }
+
+    // Añadir elementos al menú
+    menu.appendChild(createLinkBtn);
+    menu.appendChild(editLinkBtn);
     menu.appendChild(unlinkBtn);
+    menu.appendChild(vnode.state.linkInputContainer);
+
+    // Guardar referencias y función de actualización
+    vnode.state.createLinkBtn = createLinkBtn;
+    vnode.state.editLinkBtn = editLinkBtn;
+    vnode.state.updateLinkMenuButtons = updateLinkMenuButtons;
+
+    // Actualizar botones inicialmente
+    updateLinkMenuButtons();
 
     // Guardar referencia en el estado del vnode
     vnode.state.linkBubbleMenuElement = menu;
@@ -559,11 +621,20 @@ function initTiptapEditor(vnode, container) {
             SlashCommands.configure({
                 suggestion: { char: '/', render: renderSlashCommands }
             }),
-            // Menú para Enlaces
+            // Menú para Enlaces (crear y editar)
             BubbleMenu.configure({
                 pluginKey: 'linkMenu',
-                element: createBubbleMenuElement(vnode),
-                shouldShow: ({ editor }) => editor.isActive('link'),
+                element: createLinkBubbleMenu(vnode),
+                shouldShow: ({ editor, state }) => {
+                    // Mostrar si hay link activo O si hay texto seleccionado
+                    const { from, to } = state.selection;
+                    const hasSelection = from !== to;
+                    // Actualizar botones antes de mostrar
+                    if (vnode.state.updateLinkMenuButtons) {
+                        vnode.state.updateLinkMenuButtons();
+                    }
+                    return editor.isActive('link') || hasSelection;
+                },
                 tippyOptions: { duration: 100, placement: 'top', interactive: true }
             }),
             // Menú para Imágenes
@@ -576,6 +647,9 @@ function initTiptapEditor(vnode, container) {
         ],
         content: vnode.state.lastEmittedValue || '',
         onUpdate: ({ editor }) => {
+            // Si estamos cambiando de idioma, ignorar este evento para evitar bucles
+            if (vnode.state.isSwitchingLang) return;
+
             const html = editor.getHTML();
             vnode.state.lastEmittedValue = html;
             vnode.state.lastExternalValue = html; // FIX: Evitar que el cursor salte
@@ -607,7 +681,10 @@ function initTiptapEditor(vnode, container) {
             }
         },
         onSelectionUpdate: () => {
-            // No hacer redraw - Tiptap maneja el DOM internamente
+            // Actualizar botones del menú de enlace si existe
+            if (vnode.state.updateLinkMenuButtons) {
+                vnode.state.updateLinkMenuButtons();
+            }
         },
         onFocus: () => {
             vnode.state.isFocused = true;
@@ -728,6 +805,9 @@ function initCodeMirrorEditor(vnode, container) {
 
     // Listener para cambios en CodeMirror
     editor.on('change', () => {
+        // Si estamos cambiando de idioma, ignorar este evento para evitar bucles
+        if (vnode.state.isSwitchingLang) return;
+
         const val = editor.getValue();
         vnode.state.sourceValue = val;
         vnode.state.lastEmittedValue = val;
@@ -864,6 +944,7 @@ export const NativeRichEditor = {
         vnode.state.active = createActiveState();
         vnode.state.inlineInputMode = null;
         vnode.state.inlineInputValue = '';
+        vnode.state.isSwitchingLang = false; // Candado para evitar bucles al cambiar de idioma
     },
 
     onremove: (vnode) => {
@@ -1078,6 +1159,9 @@ export const NativeRichEditor = {
                             const { translations } = normalizeToTranslations(rawExternal);
                             const newValue = translations[lang] || '';
 
+                            // ACTIVAMOS EL CANDADO para evitar bucles de eventos
+                            vnode.state.isSwitchingLang = true;
+
                             vnode.state.currentLang = lang;
                             vnode.state.lastExternalValue = newValue;
                             vnode.state.lastEmittedValue = newValue;
@@ -1089,53 +1173,56 @@ export const NativeRichEditor = {
                                 vnode.state.tiptapEditor.commands.setContent(newValue);
                             }
                             m.redraw();
+
+                            // QUITAMOS EL CANDADO de forma asíncrona
+                            setTimeout(() => {
+                                vnode.state.isSwitchingLang = false;
+                            }, 50);
                         }
                     }, [ m('span', { key: 'lang-span-' + lang, class: 'native-rich-editor__button-icon' }, lang.toUpperCase()) ])
                 );
             });
 
             // Botón: De Multidioma a Texto Simple
-            if (!isSourceView) {
-                rightGroup.push(
-                    m('button', {
-                        key: 'toggle-lang-off',
-                        type: 'button',
-                        class: 'native-rich-editor__button',
-                        title: 'Desactivar traducción (Modo texto)',
-                        onclick: (e) => {
-                            e.preventDefault();
-                            // Contar cuántos idiomas tienen contenido (sin contar "und")
-                            const rawExternal = getRawExternalValue(vnode.state.getAttrs ? vnode.state.getAttrs() : vnode.attrs);
-                            const { translations } = normalizeToTranslations(rawExternal);
-                            let filledLangs = 0;
-                            let filledLangName = '';
-                            SUPPORTED_LANGS.forEach(lang => {
-                                if (lang !== 'und' && translations[lang] && translations[lang].trim() !== '') {
-                                    filledLangs++;
-                                    filledLangName = lang.toUpperCase();
-                                }
-                            });
-
-                            // Solo se puede convertir si hay exactamente 1 idioma con contenido
-                            if (filledLangs === 0) {
-                                // No hay contenido en ningún idioma, convertir directamente
-                                vnode.state.isMultiLang = false;
-                                updateValue(vnode, '');
-                            } else if (filledLangs === 1) {
-                                // Hay exactamente 1 idioma, preguntar confirmación
-                                if (confirm('¿Convertir a texto único? El contenido en ' + filledLangName + ' se mantendrá.')) {
-                                    vnode.state.isMultiLang = false;
-                                    updateValue(vnode, vnode.state.lastEmittedValue);
-                                }
-                            } else {
-                                // Hay más de 1 idioma, no permitir
-                                alert('No se puede convertir a texto único porque hay contenido en varios idiomas (' + filledLangs + '). Traduce primero los demás idiomas.');
+            rightGroup.push(
+                m('button', {
+                    key: 'toggle-lang-off',
+                    type: 'button',
+                    class: 'native-rich-editor__button',
+                    title: 'Desactivar traducción (Modo texto)',
+                    onclick: (e) => {
+                        e.preventDefault();
+                        // Contar cuántos idiomas tienen contenido (sin contar "und")
+                        const rawExternal = getRawExternalValue(vnode.state.getAttrs ? vnode.state.getAttrs() : vnode.attrs);
+                        const { translations } = normalizeToTranslations(rawExternal);
+                        let filledLangs = 0;
+                        let filledLangName = '';
+                        SUPPORTED_LANGS.forEach(lang => {
+                            if (lang !== 'und' && translations[lang] && translations[lang].trim() !== '') {
+                                filledLangs++;
+                                filledLangName = lang.toUpperCase();
                             }
+                        });
+
+                        // Solo se puede convertir si hay exactamente 1 idioma con contenido
+                        if (filledLangs === 0) {
+                            // No hay contenido en ningún idioma, convertir directamente
+                            vnode.state.isMultiLang = false;
+                            updateValue(vnode, '');
+                        } else if (filledLangs === 1) {
+                            // Hay exactamente 1 idioma, preguntar confirmación
+                            if (confirm('¿Convertir a texto único? El contenido en ' + filledLangName + ' se mantendrá.')) {
+                                vnode.state.isMultiLang = false;
+                                updateValue(vnode, vnode.state.lastEmittedValue);
+                            }
+                        } else {
+                            // Hay más de 1 idioma, no permitir
+                            alert('No se puede convertir a texto único porque hay contenido en varios idiomas (' + filledLangs + '). Traduce primero los demás idiomas.');
                         }
-                    }, m.trust(ICONS.close))
-                );
-            }
-        } else if (!isSourceView) {
+                    }
+                }, m.trust(ICONS.close))
+            );
+        } else {
             // Botón: De Texto Simple a Multidioma (Bola del mundo)
             rightGroup.push(
                 m('button', {
