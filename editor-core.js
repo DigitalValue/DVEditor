@@ -126,31 +126,41 @@ export function formatHTML(htmlString) {
 export function getRawExternalValue(attrs) {
     if (!attrs) return '';
     if (typeof attrs === 'string') return attrs;
-    return attrs.value || '';
+    // Support both attrs.value and attrs.data[attrs.name] patterns
+    if (attrs.value !== undefined) return attrs.value;
+    if (attrs.data && attrs.name) {
+        return attrs.data[attrs.name] || '';
+    }
+    return '';
 }
 
 export function normalizeToTranslations(raw) {
-    if (!raw) return { isMulti: false, translations: { es: '', va: '' } };
+    const emptyTranslations = { und: '', es: '', va: '' };
+    if (!raw) return { isMulti: false, translations: { ...emptyTranslations } };
 
-    // Si es string, asume que es multilingue con JSON
     if (typeof raw === 'string') {
         try {
             const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-                return { isMulti: true, translations: parsed };
+            // Validar de forma estricta: es un objeto y tiene al menos una de nuestras keys de idioma
+            const isRealMultiLang = typeof parsed === 'object' && parsed !== null &&
+                                    SUPPORTED_LANGS.some(lang => parsed.hasOwnProperty(lang));
+
+            if (isRealMultiLang) {
+                return { isMulti: true, translations: { ...emptyTranslations, ...parsed } };
             }
         } catch (e) {
-            // Si no es JSON, es solo un string simple
-            return { isMulti: false, translations: { es: raw, va: raw } };
+            // No es JSON, seguimos de largo
         }
+
+        // Si es un string normal, lo asignamos ÚNICAMENTE a 'und'.
+        return { isMulti: false, translations: { ...emptyTranslations, und: raw } };
     }
 
-    // Si ya es objeto
     if (raw && typeof raw === 'object') {
-        return { isMulti: true, translations: raw };
+        return { isMulti: true, translations: { ...emptyTranslations, ...raw } };
     }
 
-    return { isMulti: false, translations: { es: '', va: '' } };
+    return { isMulti: false, translations: { ...emptyTranslations } };
 }
 
 export function getTextForLang(translations, lang) {

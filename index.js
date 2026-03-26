@@ -56,14 +56,40 @@ function sanitizeHtml(vnode, html) {
     return html;
 }
 
-// Función helper para actualizar data[name] y llamar a onchange
+// Función para filtrar idiomas vacíos de un objeto de traducciones
+function cleanTranslations(translations) {
+    const cleaned = {};
+    Object.keys(translations).forEach(lang => {
+        if (translations[lang] && translations[lang].trim() !== '') {
+            cleaned[lang] = translations[lang];
+        }
+    });
+    return cleaned;
+}
+
+// Función helper para actualizar data[name] y llamar a onchange (con debounce)
 function updateValue(vnode, value) {
-    if (vnode.attrs.onchange) {
-        vnode.attrs.onchange(value);
+    // Si es multilingüe y es un objeto, filtrar idiomas vacíos
+    let finalValue = value;
+    if (vnode.state.isMultiLang && typeof value === 'object' && value !== null) {
+        finalValue = cleanTranslations(value);
     }
+
+    // Actualizar data inmediatamente para mantener el modelo sincronizado
     if (vnode.attrs.data && vnode.attrs.name) {
-        vnode.attrs.data[vnode.attrs.name] = value;
+        vnode.attrs.data[vnode.attrs.name] = finalValue;
     }
+
+    // Evitar saturar a Mithril con un debounce de 300ms para onchange
+    if (vnode.state.typingTimeout) {
+        clearTimeout(vnode.state.typingTimeout);
+    }
+
+    vnode.state.typingTimeout = setTimeout(() => {
+        if (vnode.attrs.onchange) {
+            vnode.attrs.onchange(finalValue);
+        }
+    }, 300);
 }
 
 // ============================================
@@ -204,6 +230,12 @@ function applyCommand(vnode, command) {
             editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
             break;
         case 'link':
+            // Si ya hay un enlace activo, el BubbleMenu se encarga de editarlo
+            if (editor.isActive('link')) {
+                // El BubbleMenu se mostrará automáticamente
+                break;
+            }
+            // Si no hay enlace activo pero hay selección, crear uno nuevo con prompt
             const url = window.prompt('URL del enlace:');
             if (url) editor.chain().focus().setLink({ href: url }).run();
             break;
@@ -303,20 +335,13 @@ function cancelInlineInput(vnode) {
 // BUBBLE MENU - Menú flotante para enlaces y para imágenes
 // ============================================
 
-let bubbleMenuElement = null;
-let linkInputContainer = null;
-let linkInput = null;
-
-let imageBubbleMenuElement = null;
-let altInputContainer = null;
-let altInput = null;
-
 function createBubbleMenuElement(vnode) {
-    if (bubbleMenuElement) return bubbleMenuElement;
+    // Si ya existe para esta instancia, lo devolvemos
+    if (vnode.state.linkBubbleMenuElement) return vnode.state.linkBubbleMenuElement;
 
-    bubbleMenuElement = document.createElement('div');
-    bubbleMenuElement.className = 'bubble-menu';
-    bubbleMenuElement.style.cssText = `
+    const menu = document.createElement('div');
+    menu.className = 'bubble-menu';
+    menu.style.cssText = `
         display: flex;
         align-items: center;
         gap: 4px;
@@ -358,22 +383,22 @@ function createBubbleMenuElement(vnode) {
         const editor = vnode.state.tiptapEditor;
         if (!editor) return;
         const attrs = editor.getAttributes('link');
-        linkInput.value = attrs.href || '';
-        linkInputContainer.style.display = 'flex';
-        setTimeout(() => linkInput.focus(), 10);
+        vnode.state.linkInput.value = attrs.href || '';
+        vnode.state.linkInputContainer.style.display = 'flex';
+        setTimeout(() => vnode.state.linkInput.focus(), 10);
     });
 
-    linkInputContainer = document.createElement('div');
-    linkInputContainer.style.cssText = 'display: none; align-items: center; gap: 6px; margin-left: 4px;';
-    
-    linkInput = document.createElement('input');
-    linkInput.type = 'text';
-    linkInput.placeholder = 'https://...';
-    linkInput.style.cssText = 'padding: 5px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a2a; color: #e0e0e0; font-size: 13px; width: 180px; outline: none;';
-    linkInput.onkeydown = (e) => {
+    vnode.state.linkInputContainer = document.createElement('div');
+    vnode.state.linkInputContainer.style.cssText = 'display: none; align-items: center; gap: 6px; margin-left: 4px;';
+
+    vnode.state.linkInput = document.createElement('input');
+    vnode.state.linkInput.type = 'text';
+    vnode.state.linkInput.placeholder = 'https://...';
+    vnode.state.linkInput.style.cssText = 'padding: 5px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a2a; color: #e0e0e0; font-size: 13px; width: 180px; outline: none;';
+    vnode.state.linkInput.onkeydown = (e) => {
         if (e.key === 'Enter') {
-            vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: linkInput.value.trim() }).run();
-            linkInputContainer.style.display = 'none';
+            vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: vnode.state.linkInput.value.trim() }).run();
+            vnode.state.linkInputContainer.style.display = 'none';
         }
     };
 
@@ -381,31 +406,35 @@ function createBubbleMenuElement(vnode) {
     confirmLinkBtn.innerHTML = '✓';
     confirmLinkBtn.style.cssText = 'padding: 5px 8px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;';
     confirmLinkBtn.onclick = () => {
-        vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: linkInput.value.trim() }).run();
-        linkInputContainer.style.display = 'none';
+        vnode.state.tiptapEditor.chain().focus().extendMarkRange('link').setLink({ href: vnode.state.linkInput.value.trim() }).run();
+        vnode.state.linkInputContainer.style.display = 'none';
     };
 
-    linkInputContainer.appendChild(linkInput);
-    linkInputContainer.appendChild(confirmLinkBtn);
+    vnode.state.linkInputContainer.appendChild(vnode.state.linkInput);
+    vnode.state.linkInputContainer.appendChild(confirmLinkBtn);
 
     const unlinkBtn = createBtn('✂️', 'Quitar enlace', () => {
         vnode.state.tiptapEditor.chain().focus().unsetLink().run();
     });
 
-    bubbleMenuElement.appendChild(boldBtn);
-    bubbleMenuElement.appendChild(linkBtn);
-    bubbleMenuElement.appendChild(linkInputContainer);
-    bubbleMenuElement.appendChild(unlinkBtn);
+    menu.appendChild(boldBtn);
+    menu.appendChild(linkBtn);
+    menu.appendChild(vnode.state.linkInputContainer);
+    menu.appendChild(unlinkBtn);
 
-    return bubbleMenuElement;
+    // Guardar referencia en el estado del vnode
+    vnode.state.linkBubbleMenuElement = menu;
+
+    return menu;
 }
 
 function createImageBubbleMenuElement(vnode) {
-    if (imageBubbleMenuElement) return imageBubbleMenuElement;
+    // Si ya existe para esta instancia, lo devolvemos
+    if (vnode.state.imageBubbleMenuElement) return vnode.state.imageBubbleMenuElement;
 
-    imageBubbleMenuElement = document.createElement('div');
-    imageBubbleMenuElement.className = 'bubble-menu bubble-menu--image';
-    imageBubbleMenuElement.style.cssText = `
+    const menu = document.createElement('div');
+    menu.className = 'bubble-menu bubble-menu--image';
+    menu.style.cssText = `
         display: flex;
         align-items: center;
         gap: 4px;
@@ -441,22 +470,22 @@ function createImageBubbleMenuElement(vnode) {
         const editor = vnode.state.tiptapEditor;
         if (!editor) return;
         const attrs = editor.getAttributes('image');
-        altInput.value = attrs.alt || '';
-        altInputContainer.style.display = 'flex';
-        setTimeout(() => altInput.focus(), 10);
+        vnode.state.altInput.value = attrs.alt || '';
+        vnode.state.altInputContainer.style.display = 'flex';
+        setTimeout(() => vnode.state.altInput.focus(), 10);
     });
 
-    altInputContainer = document.createElement('div');
-    altInputContainer.style.cssText = 'display: none; align-items: center; gap: 6px; margin-left: 4px;';
-    
-    altInput = document.createElement('input');
-    altInput.type = 'text';
-    altInput.placeholder = 'Descripción para Google...';
-    altInput.style.cssText = 'padding: 5px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a2a; color: #e0e0e0; font-size: 13px; width: 150px; outline: none;';
-    altInput.onkeydown = (e) => {
+    vnode.state.altInputContainer = document.createElement('div');
+    vnode.state.altInputContainer.style.cssText = 'display: none; align-items: center; gap: 6px; margin-left: 4px;';
+
+    vnode.state.altInput = document.createElement('input');
+    vnode.state.altInput.type = 'text';
+    vnode.state.altInput.placeholder = 'Descripción para Google...';
+    vnode.state.altInput.style.cssText = 'padding: 5px 10px; border: 1px solid #444; border-radius: 4px; background: #2a2a2a; color: #e0e0e0; font-size: 13px; width: 150px; outline: none;';
+    vnode.state.altInput.onkeydown = (e) => {
         if (e.key === 'Enter') {
-            vnode.state.tiptapEditor.chain().focus().updateAttributes('image', { alt: altInput.value.trim() }).run();
-            altInputContainer.style.display = 'none';
+            vnode.state.tiptapEditor.chain().focus().updateAttributes('image', { alt: vnode.state.altInput.value.trim() }).run();
+            vnode.state.altInputContainer.style.display = 'none';
         }
     };
 
@@ -464,12 +493,12 @@ function createImageBubbleMenuElement(vnode) {
     confirmAltBtn.innerHTML = '✓';
     confirmAltBtn.style.cssText = 'padding: 5px 8px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;';
     confirmAltBtn.onclick = () => {
-        vnode.state.tiptapEditor.chain().focus().updateAttributes('image', { alt: altInput.value.trim() }).run();
-        altInputContainer.style.display = 'none';
+        vnode.state.tiptapEditor.chain().focus().updateAttributes('image', { alt: vnode.state.altInput.value.trim() }).run();
+        vnode.state.altInputContainer.style.display = 'none';
     };
 
-    altInputContainer.appendChild(altInput);
-    altInputContainer.appendChild(confirmAltBtn);
+    vnode.state.altInputContainer.appendChild(vnode.state.altInput);
+    vnode.state.altInputContainer.appendChild(confirmAltBtn);
 
     // Botones de alineación
     const leftBtn = createBtn('⬅️', 'Alinear izquierda', () => {
@@ -486,19 +515,20 @@ function createImageBubbleMenuElement(vnode) {
         vnode.state.tiptapEditor.chain().focus().deleteSelection().run();
     });
 
-    imageBubbleMenuElement.appendChild(altBtn);
-    imageBubbleMenuElement.appendChild(altInputContainer);
-    imageBubbleMenuElement.appendChild(leftBtn);
-    imageBubbleMenuElement.appendChild(centerBtn);
-    imageBubbleMenuElement.appendChild(rightBtn);
-    imageBubbleMenuElement.appendChild(deleteBtn);
+    menu.appendChild(altBtn);
+    menu.appendChild(vnode.state.altInputContainer);
+    menu.appendChild(leftBtn);
+    menu.appendChild(centerBtn);
+    menu.appendChild(rightBtn);
+    menu.appendChild(deleteBtn);
 
-    return imageBubbleMenuElement;
+    // Guardar referencia en el estado del vnode
+    vnode.state.imageBubbleMenuElement = menu;
+
+    return menu;
 }
 
 function initTiptapEditor(vnode, container) {
-    console.log('Inicializando editor Tiptap con funciones de CMS');
-
     if (vnode.state.tiptapEditor) {
         vnode.state.tiptapEditor.destroy();
     }
@@ -531,7 +561,6 @@ function initTiptapEditor(vnode, container) {
             }),
             // Menú para Enlaces
             BubbleMenu.configure({
-                name: 'linkBubbleMenu',
                 pluginKey: 'linkMenu',
                 element: createBubbleMenuElement(vnode),
                 shouldShow: ({ editor }) => editor.isActive('link'),
@@ -539,7 +568,6 @@ function initTiptapEditor(vnode, container) {
             }),
             // Menú para Imágenes
             BubbleMenu.configure({
-                name: 'imageBubbleMenu',
                 pluginKey: 'imageMenu',
                 element: createImageBubbleMenuElement(vnode),
                 shouldShow: ({ editor }) => editor.isActive('image'),
@@ -572,22 +600,22 @@ function initTiptapEditor(vnode, container) {
                 if (isMulti) {
                     const newTranslations = { ...translations };
                     newTranslations[vnode.state.currentLang] = html;
-                    updateValue(vnode, JSON.stringify(newTranslations));
+                    updateValue(vnode, newTranslations);
                 } else {
                     updateValue(vnode, html);
                 }
             }
         },
         onSelectionUpdate: () => {
-            m.redraw();
+            // No hacer redraw - Tiptap maneja el DOM internamente
         },
         onFocus: () => {
             vnode.state.isFocused = true;
-            m.redraw();
+            // No hacer redraw - Mithril redibuja automáticamente cuando attrs/state cambian
         },
         onBlur: () => {
             vnode.state.isFocused = false;
-            m.redraw();
+            // No hacer redraw - Mithril redibuja automáticamente cuando attrs/state cambian
         }
     });
 
@@ -816,6 +844,8 @@ export const NativeRichEditor = {
         vnode.state.currentLang = DEFAULT_LANG;
         vnode.state.isMultiLang = isMulti;
         vnode.state.isMultiLangWasString = !isMulti && typeof rawExternal === 'string';
+        // Guardar si el formato original era JSON para preservarlo al guardar
+        vnode.state.wasJsonFormat = typeof rawExternal === 'string' && rawExternal.trim().startsWith('{');
 
         const initialValue = getTextForLang(translations, vnode.state.currentLang);
         vnode.state.lastExternalValue = initialValue;
@@ -837,6 +867,11 @@ export const NativeRichEditor = {
     },
 
     onremove: (vnode) => {
+        // Limpiar timeout de debounce
+        if (vnode.state.typingTimeout) {
+            clearTimeout(vnode.state.typingTimeout);
+            vnode.state.typingTimeout = null;
+        }
         vnode.state.pendingLinkSelection = null;
         vnode.state.pendingImageSelection = null;
         hidePopover();
@@ -931,6 +966,11 @@ export const NativeRichEditor = {
 
         // FIX: Usar Tiptap API si está disponible
         if (vnode.state.tiptapEditor) {
+            // CLAVE: Si el editor tiene el foco, el contenido es del usuario - NO tocar
+            if (vnode.state.isFocused) {
+                return;
+            }
+
             const currentContent = vnode.state.tiptapEditor.getHTML();
             const normalizedContent = normalizeHtml(currentContent);
 
@@ -944,7 +984,7 @@ export const NativeRichEditor = {
 
             // Solo actualizar si hay diferencias significativas
             const sizeDiff = Math.abs(valueToSet.length - normalizedContent.length);
-            const isDrastic = !isFocused || sizeDiff > 80;
+            const isDrastic = sizeDiff > 80;
 
             if (isDrastic && valueToSet !== normalizedContent) {
                 vnode.state.tiptapEditor.commands.setContent(valueToSet);
@@ -1116,7 +1156,7 @@ export const NativeRichEditor = {
                             multiLangValue[lang] = (lang === targetLang) ? currentVal : '';
                         });
 
-                        updateValue(vnode, JSON.stringify(multiLangValue));
+                        updateValue(vnode, multiLangValue);
                     }
                 }, '🌍')
             );
