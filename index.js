@@ -56,6 +56,16 @@ function sanitizeHtml(vnode, html) {
     return html;
 }
 
+// Función helper para actualizar data[name] y llamar a onchange
+function updateValue(vnode, value) {
+    if (vnode.attrs.onchange) {
+        vnode.attrs.onchange(value);
+    }
+    if (vnode.attrs.data && vnode.attrs.name) {
+        vnode.attrs.data[vnode.attrs.name] = value;
+    }
+}
+
 // ============================================
 // ELEMENTOS GLOBALES (para hide functions)
 // ============================================
@@ -76,6 +86,10 @@ function hideTableToolbar(vnode) {
 
 function hideSlashMenu() {
     // Slash menu ya no se usa activamente
+}
+
+function cleanupAllBlobUrls(vnode) {
+    // No hay blob URLs que limpiar en este componente
 }
 
 function handleDrop(e) {
@@ -194,8 +208,18 @@ function applyCommand(vnode, command) {
             if (url) editor.chain().focus().setLink({ href: url }).run();
             break;
         case 'image':
-            const imgUrl = window.prompt('URL de la imagen:');
-            if (imgUrl) editor.chain().focus().setImage({ src: imgUrl }).run();
+            // Usar onClickImage custom si está definido, si no fallback a prompt
+            if (vnode.attrs.onClickImage) {
+                // Crear función que inserta HTML en el cursor actual
+                const insertHtml = (html) => {
+                    editor.chain().focus().insertContent(html).run();
+                    emitChange(vnode);
+                };
+                vnode.attrs.onClickImage(insertHtml);
+            } else {
+                const imgUrl = window.prompt('URL de la imagen:');
+                if (imgUrl) editor.chain().focus().setImage({ src: imgUrl }).run();
+            }
             break;
     }
 
@@ -507,6 +531,7 @@ function initTiptapEditor(vnode, container) {
             }),
             // Menú para Enlaces
             BubbleMenu.configure({
+                name: 'linkBubbleMenu',
                 pluginKey: 'linkMenu',
                 element: createBubbleMenuElement(vnode),
                 shouldShow: ({ editor }) => editor.isActive('link'),
@@ -514,6 +539,7 @@ function initTiptapEditor(vnode, container) {
             }),
             // Menú para Imágenes
             BubbleMenu.configure({
+                name: 'imageBubbleMenu',
                 pluginKey: 'imageMenu',
                 element: createImageBubbleMenuElement(vnode),
                 shouldShow: ({ editor }) => editor.isActive('image'),
@@ -546,13 +572,9 @@ function initTiptapEditor(vnode, container) {
                 if (isMulti) {
                     const newTranslations = { ...translations };
                     newTranslations[vnode.state.currentLang] = html;
-                    if (vnode.attrs.onchange) {
-                        vnode.attrs.onchange(JSON.stringify(newTranslations));
-                    }
+                    updateValue(vnode, JSON.stringify(newTranslations));
                 } else {
-                    if (vnode.attrs.onchange) {
-                        vnode.attrs.onchange(html);
-                    }
+                    updateValue(vnode, html);
                 }
             }
         },
@@ -690,9 +712,9 @@ function initCodeMirrorEditor(vnode, container) {
         if (isMulti) {
             const newTranslations = { ...translations };
             newTranslations[vnode.state.currentLang] = val;
-            if (vnode.attrs.onchange) vnode.attrs.onchange(JSON.stringify(newTranslations));
+            updateValue(vnode, JSON.stringify(newTranslations));
         } else {
-            if (vnode.attrs.onchange) vnode.attrs.onchange(val);
+            updateValue(vnode, val);
         }
     });
 
@@ -1058,12 +1080,12 @@ export const NativeRichEditor = {
                             if (filledLangs === 0) {
                                 // No hay contenido en ningún idioma, convertir directamente
                                 vnode.state.isMultiLang = false;
-                                if (vnode.attrs.onchange) vnode.attrs.onchange('');
+                                updateValue(vnode, '');
                             } else if (filledLangs === 1) {
                                 // Hay exactamente 1 idioma, preguntar confirmación
                                 if (confirm('¿Convertir a texto único? El contenido en ' + filledLangName + ' se mantendrá.')) {
                                     vnode.state.isMultiLang = false;
-                                    if (vnode.attrs.onchange) vnode.attrs.onchange(vnode.state.lastEmittedValue);
+                                    updateValue(vnode, vnode.state.lastEmittedValue);
                                 }
                             } else {
                                 // Hay más de 1 idioma, no permitir
@@ -1094,9 +1116,7 @@ export const NativeRichEditor = {
                             multiLangValue[lang] = (lang === targetLang) ? currentVal : '';
                         });
 
-                        if (vnode.attrs.onchange) {
-                            vnode.attrs.onchange(JSON.stringify(multiLangValue));
-                        }
+                        updateValue(vnode, JSON.stringify(multiLangValue));
                     }
                 }, '🌍')
             );
