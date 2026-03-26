@@ -69,6 +69,17 @@ export const SLASH_COMMANDS = [
 export const DEFAULT_LANG = 'und';
 export const SUPPORTED_LANGS = ['es', 'va', 'und'];
 
+// Nombres descriptivos de los idiomas
+export const LANG_NAMES = {
+    es: 'Español',
+    va: 'Valenciano',
+    und: 'Sin definir'
+};
+
+export function getLangName(langCode) {
+    return LANG_NAMES[langCode] || langCode.toUpperCase();
+}
+
 export const STYLE_ELEMENT_ID = 'native-rich-editor-styles';
 
 // ============================================

@@ -35,6 +35,8 @@ import {
     DEFAULT_TOOLBAR_COMMAND,
     DEFAULT_LANG,
     SUPPORTED_LANGS,
+    LANG_NAMES,
+    getLangName,
     STYLE_ELEMENT_ID,
     sanitizeUrl,
     normalizeHtml,
@@ -61,6 +63,7 @@ function sanitizeHtml(vnode, html) {
 let popoverElement = null;
 let tableToolbarElement = null;
 let slashMenuElement = null;
+let imageToolbarElement = null;
 
 // Funciones simples para ocultar elementos
 function hidePopover() {
@@ -1005,7 +1008,7 @@ export const NativeRichEditor = {
                         key: 'lang-btn-' + lang,
                         type: 'button',
                         class: `native-rich-editor__button native-rich-editor__button--lang${isCurrentLang ? ' is-active' : ''}`,
-                        title: lang.toUpperCase(),
+                        title: getLangName(lang),
                         onclick: (e) => {
                             e.preventDefault();
                             // Leer el valor del idioma seleccionado desde los attrs actualizados
@@ -1067,7 +1070,7 @@ export const NativeRichEditor = {
                                 alert('No se puede convertir a texto único porque hay contenido en varios idiomas (' + filledLangs + '). Traduce primero los demás idiomas.');
                             }
                         }
-                    }, m.trust(ICONS.list))
+                    }, m.trust(ICONS.close))
                 );
             }
         } else if (!isSourceView) {
