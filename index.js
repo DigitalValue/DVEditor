@@ -46,7 +46,8 @@ import {
     getTextForLang,
     getExternalValue,
     emitChange,
-    updateActiveState
+    updateActiveState,
+    translateSALT
 } from './editor-core.js';
 
 // Función simple de sanitización (Tiptap maneja sanitización internamente)
@@ -789,7 +790,7 @@ function initCodeMirrorEditor(vnode, container) {
     // Inicializar CodeMirror usando el import
     const editor = CodeMirror.fromTextArea(textarea, {
         mode: 'htmlmixed',
-        theme: 'default',
+        theme: 'none',
         lineNumbers: true,
         lineWrapping: true,
         tabSize: 2,
@@ -944,7 +945,8 @@ export const NativeRichEditor = {
         vnode.state.active = createActiveState();
         vnode.state.inlineInputMode = null;
         vnode.state.inlineInputValue = '';
-        vnode.state.isSwitchingLang = false; // Candado para evitar bucles al cambiar de idioma
+        vnode.state.isSwitchingLang = 0; // Contador para evitar bucles al cambiar de idioma (0=normal, >0=cambiando)
+        vnode.state.langDropdownCloseHandler = null; // Referencia al handler de cierre
     },
 
     onremove: (vnode) => {
@@ -997,6 +999,12 @@ export const NativeRichEditor = {
         if (vnode.state.codeMirrorEditor) {
             vnode.state.codeMirrorEditor.toTextArea();
             vnode.state.codeMirrorEditor = null;
+        }
+
+        // Limpiar listener del dropdown de idiomas
+        if (vnode.state.langDropdownCloseHandler) {
+            document.removeEventListener('click', vnode.state.langDropdownCloseHandler);
+            vnode.state.langDropdownCloseHandler = null;
         }
     },
 
@@ -1119,7 +1127,6 @@ export const NativeRichEditor = {
             if (cmd.shortcut) title += ` (${cmd.shortcut})`;
 
             const btn = m('button', {
-                key: 'cmd-' + cmd.id,
                 type: 'button',
                 class: buttonClass,
                 title: title,
@@ -1134,118 +1141,259 @@ export const NativeRichEditor = {
             }
         });
 
-        // 2. Botones de Multidioma
+        // 2. Botones de Multidioma (DROPDOWN)
         if (isMultiLangMode) {
-            rightGroup.unshift(
-                m('div', {
-                    key: 'lang-label',
-                    class: 'native-rich-editor__button-label',
-                    style: 'margin-right: 0.5rem; font-weight: 500; font-size: 0.85rem;'
-                }, activeLang.toUpperCase())
-            );
-
-            SUPPORTED_LANGS.forEach(lang => {
-                const isCurrentLang = lang === activeLang;
-                rightGroup.push(
+            // Botón que abre el dropdown de multilingüe
+            rightGroup.push(
+                m('div', { style: 'position: relative;' }, [
                     m('button', {
-                        key: 'lang-btn-' + lang,
                         type: 'button',
-                        class: `native-rich-editor__button native-rich-editor__button--lang${isCurrentLang ? ' is-active' : ''}`,
-                        title: getLangName(lang),
+                        class: `native-rich-editor__button native-rich-editor__button--lang-active${vnode.state.langDropdownOpen ? ' is-active' : ''}`,
+                        title: 'Cambiar idioma',
+                        'aria-expanded': vnode.state.langDropdownOpen,
+                        'aria-haspopup': 'listbox',
+                        'aria-label': 'Cambiar idioma, actualmente ' + getLangName(activeLang),
                         onclick: (e) => {
                             e.preventDefault();
-                            // Leer el valor del idioma seleccionado desde los attrs actualizados
-                            const rawExternal = getRawExternalValue(vnode.state.getAttrs ? vnode.state.getAttrs() : vnode.attrs);
-                            const { translations } = normalizeToTranslations(rawExternal);
-                            const newValue = translations[lang] || '';
-
-                            // ACTIVAMOS EL CANDADO para evitar bucles de eventos
-                            vnode.state.isSwitchingLang = true;
-
-                            vnode.state.currentLang = lang;
-                            vnode.state.lastExternalValue = newValue;
-                            vnode.state.lastEmittedValue = newValue;
-
-                            if (vnode.state.isSourceView && vnode.state.codeMirrorEditor) {
-                                vnode.state.sourceValue = newValue;
-                                vnode.state.codeMirrorEditor.setValue(newValue);
-                            } else if (vnode.state.tiptapEditor) {
-                                vnode.state.tiptapEditor.commands.setContent(newValue);
-                            }
+                            e.stopPropagation();
+                            vnode.state.langDropdownOpen = !vnode.state.langDropdownOpen;
                             m.redraw();
-
-                            // QUITAMOS EL CANDADO de forma asíncrona
-                            setTimeout(() => {
-                                vnode.state.isSwitchingLang = false;
-                            }, 50);
                         }
-                    }, [ m('span', { key: 'lang-span-' + lang, class: 'native-rich-editor__button-icon' }, lang.toUpperCase()) ])
-                );
-            });
-
-            // Botón: De Multidioma a Texto Simple
-            rightGroup.push(
-                m('button', {
-                    key: 'toggle-lang-off',
-                    type: 'button',
-                    class: 'native-rich-editor__button',
-                    title: 'Desactivar traducción (Modo texto)',
-                    onclick: (e) => {
-                        e.preventDefault();
-                        // Contar cuántos idiomas tienen contenido (sin contar "und")
-                        const rawExternal = getRawExternalValue(vnode.state.getAttrs ? vnode.state.getAttrs() : vnode.attrs);
-                        const { translations } = normalizeToTranslations(rawExternal);
-                        let filledLangs = 0;
-                        let filledLangName = '';
-                        SUPPORTED_LANGS.forEach(lang => {
-                            if (lang !== 'und' && translations[lang] && translations[lang].trim() !== '') {
-                                filledLangs++;
-                                filledLangName = lang.toUpperCase();
+                    }, [
+                        m('span', { class: 'lang-dropdown-label' }, getLangName(activeLang)),
+                        m('span', {
+                            class: 'lang-dropdown-arrow',
+                            style: vnode.state.langDropdownOpen
+                                ? 'margin-left: 0.25rem; font-size: 0.7rem; transform: rotate(180deg);'
+                                : 'margin-left: 0.25rem; font-size: 0.7rem;'
+                        }, '▼')
+                    ]),
+                    // Dropdown
+                    vnode.state.langDropdownOpen ? m('div', {
+                        class: 'native-rich-editor__lang-dropdown',
+                        role: 'listbox',
+                        'aria-label': 'Seleccionar idioma',
+                        oncreate: (vnode2) => {
+                            // Posicionar el dropdown debajo del botón toggle
+                            const toggleBtn = vnode2.dom.previousElementSibling;
+                            if (toggleBtn) {
+                                const rect = toggleBtn.getBoundingClientRect();
+                                vnode2.dom.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+                                vnode2.dom.style.left = rect.left + 'px';
                             }
-                        });
-
-                        // Solo se puede convertir si hay exactamente 1 idioma con contenido
-                        if (filledLangs === 0) {
-                            // No hay contenido en ningún idioma, convertir directamente
-                            vnode.state.isMultiLang = false;
-                            updateValue(vnode, '');
-                        } else if (filledLangs === 1) {
-                            // Hay exactamente 1 idioma, preguntar confirmación
-                            if (confirm('¿Convertir a texto único? El contenido en ' + filledLangName + ' se mantendrá.')) {
-                                vnode.state.isMultiLang = false;
-                                updateValue(vnode, vnode.state.lastEmittedValue);
+                            // Cerrar dropdown si se hace clic fuera (usando capture phase para detectar antes)
+                            // Guardar referencia en variable local para que la función pueda referirse a sí misma
+                            let closeHandler = null;
+                            closeHandler = (event) => {
+                                if (!vnode2.dom.contains(event.target)) {
+                                    vnode.state.langDropdownOpen = false;
+                                    if (closeHandler) {
+                                        document.removeEventListener('click', closeHandler, true);
+                                    }
+                                    vnode.state.langDropdownCloseHandler = null;
+                                    m.redraw();
+                                }
+                            };
+                            vnode.state.langDropdownCloseHandler = closeHandler;
+                            // Usar bubble phase (false) para que el onclick del botón se ejecute primero
+                            document.addEventListener('click', closeHandler, false);
+                        },
+                        onremove: () => {
+                            // Limpiar listener al remover el dropdown del DOM
+                            if (vnode.state.langDropdownCloseHandler) {
+                                document.removeEventListener('click', vnode.state.langDropdownCloseHandler, false);
+                                vnode.state.langDropdownCloseHandler = null;
                             }
-                        } else {
-                            // Hay más de 1 idioma, no permitir
-                            alert('No se puede convertir a texto único porque hay contenido en varios idiomas (' + filledLangs + '). Traduce primero los demás idiomas.');
                         }
-                    }
-                }, m.trust(ICONS.close))
+                    }, [
+                        m('div', { class: 'native-rich-editor__lang-dropdown-header' }, [
+                            m('span', {}, 'Idioma: ' + getLangName(activeLang))
+                        ]),
+                        m('div', { class: 'native-rich-editor__lang-dropdown-buttons' }, [
+                            // Botones de idioma
+                            (() => {
+                                const langButtons = [];
+                                SUPPORTED_LANGS.forEach(lang => {
+                                    const isCurrentLang = lang === activeLang;
+                                    langButtons.push(
+                                        m('button', {
+                                            type: 'button',
+                                            role: 'option',
+                                            class: `native-rich-editor__button${isCurrentLang ? ' is-active' : ''}`,
+                                            'aria-selected': isCurrentLang,
+                                            title: getLangName(lang),
+                                            onclick: (e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                const rawExternal = getRawExternalValue(vnode.state.getAttrs ? vnode.state.getAttrs() : vnode.attrs);
+                                                const { translations } = normalizeToTranslations(rawExternal);
+                                                const newValue = translations[lang] || '';
+
+                                                // Incrementar contador en lugar de boolean
+                                                vnode.state.isSwitchingLang++;
+                                                vnode.state.currentLang = lang;
+                                                vnode.state.lastExternalValue = newValue;
+                                                vnode.state.lastEmittedValue = newValue;
+                                                vnode.state.langDropdownOpen = false;
+
+                                                if (vnode.state.isSourceView && vnode.state.codeMirrorEditor) {
+                                                    vnode.state.sourceValue = newValue;
+                                                    vnode.state.codeMirrorEditor.setValue(newValue);
+                                                } else if (vnode.state.tiptapEditor) {
+                                                    vnode.state.tiptapEditor.commands.setContent(newValue);
+                                                }
+                                                m.redraw();
+
+                                                // Decrementar contador después de un delay mayor
+                                                setTimeout(() => {
+                                                    vnode.state.isSwitchingLang--;
+                                                    if (vnode.state.isSwitchingLang < 0) vnode.state.isSwitchingLang = 0;
+                                                }, 100);
+                                            }
+                                        }, [
+                                            m('span', { class: 'native-rich-editor__button-icon' }, lang.toUpperCase()),
+                                            m('span', { class: 'button-text' }, getLangName(lang))
+                                        ])
+                                    );
+                                });
+                                return langButtons;
+                            })(),
+                            // Separador
+                            m('div', { class: 'separator' }),
+                            // Botón: Traducir ES -> VA con API SALT
+                            m('button', {
+                                type: 'button',
+                                class: 'native-rich-editor__button native-rich-editor__button--translate',
+                                title: 'Traducir al valenciano (SALT)',
+                                onclick: async (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+
+                                    const rawExternal = getRawExternalValue(vnode.state.getAttrs ? vnode.state.getAttrs() : vnode.attrs);
+                                    const { translations } = normalizeToTranslations(rawExternal);
+                                    const textToTranslate = translations['es'] || translations['und'] || '';
+
+                                    if (translations['va'] && translations['va'].trim() !== '') {
+                                        // Mostrar mensaje de error con delay para evitar bloqueos
+                                        setTimeout(() => {
+                                            vnode.state.langDropdownOpen = false;
+                                            m.redraw();
+                                            alert('Ya existe una traducción al valenciano. Por favor borra la existente antes de continuar.');
+                                        }, 100);
+                                        return;
+                                    }
+
+                                    if (!textToTranslate || textToTranslate.trim() === '') {
+                                        setTimeout(() => {
+                                            vnode.state.langDropdownOpen = false;
+                                            m.redraw();
+                                            alert('No hay texto que traducir.');
+                                        }, 100);
+                                        return;
+                                    }
+
+                                    // Confirmar con un flujo menos intrusivo
+                                    vnode.state.langDropdownOpen = false;
+                                    m.redraw();
+
+                                    const confirmed = confirm('¿Seguro que deseas traducir este texto al valenciano?');
+                                    if (!confirmed) return;
+
+                                    const translatedText = await translateSALT(textToTranslate);
+
+                                    if (translatedText && !translatedText.startsWith('ERROR')) {
+                                        const newTranslations = { ...translations, va: translatedText };
+                                        vnode.state.isMultiLang = true;
+                                        vnode.state.currentLang = 'va';
+                                        vnode.state.lastEmittedValue = translatedText;
+                                        updateValue(vnode, newTranslations);
+                                        m.redraw();
+                                        setTimeout(() => {
+                                            alert('Traducción completada al valenciano.');
+                                        }, 100);
+                                    } else {
+                                        alert('Error al traducir el texto. Inténtalo de nuevo.');
+                                    }
+                                }
+                            }, [
+                                m.trust(ICONS.translate),
+                                m('span', { class: 'button-text' }, 'Traducir al valenciano')
+                            ]),
+                            // Separador
+                            m('div', { class: 'separator' }),
+                            // Botón: De Multidioma a Texto Simple
+                            m('button', {
+                                type: 'button',
+                                class: 'native-rich-editor__button native-rich-editor__button--close-lang',
+                                title: 'Desactivar traducción (Modo texto)',
+                                onclick: (e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const rawExternal = getRawExternalValue(vnode.state.getAttrs ? vnode.state.getAttrs() : vnode.attrs);
+                                    const { translations } = normalizeToTranslations(rawExternal);
+                                    let filledLangs = 0;
+                                    let filledLangName = '';
+                                    SUPPORTED_LANGS.forEach(lang => {
+                                        if (lang !== 'und' && translations[lang] && translations[lang].trim() !== '') {
+                                            filledLangs++;
+                                            filledLangName = lang.toUpperCase();
+                                        }
+                                    });
+
+                                    vnode.state.langDropdownOpen = false;
+                                    m.redraw();
+
+                                    if (filledLangs === 0) {
+                                        vnode.state.isMultiLang = false;
+                                        updateValue(vnode, '');
+                                    } else if (filledLangs === 1) {
+                                        const confirmed = confirm('¿Convertir a texto único? El contenido en ' + filledLangName + ' se mantendrá.');
+                                        if (confirmed) {
+                                            vnode.state.isMultiLang = false;
+                                            updateValue(vnode, vnode.state.lastEmittedValue);
+                                        }
+                                    } else {
+                                        alert('No se puede convertir a texto único porque hay contenido en varios idiomas (' + filledLangs + '). Traduce primero los demás idiomas.');
+                                    }
+                                }
+                            }, [
+                                m.trust(ICONS.close),
+                                m('span', { class: 'button-text' }, 'Desactivar multilingüe')
+                            ])
+                        ])
+                    ]) : null
+                ])
             );
         } else {
             // Botón: De Texto Simple a Multidioma (Bola del mundo)
             rightGroup.push(
                 m('button', {
-                    key: 'toggle-lang-on',
                     type: 'button',
-                    class: 'native-rich-editor__button',
-                    title: 'Activar traducción',
+                    class: 'native-rich-editor__button native-rich-editor__button--lang-inactive',
+                    title: 'Activar traducción multilingüe',
+                    'aria-label': 'Activar traducción multilingüe',
                     onclick: (e) => {
                         e.preventDefault();
-                        // Guardamos en "und" (undefined/indeterminado) porque no sabemos el idioma
-                        const targetLang = 'und';
+                        e.stopPropagation(); // Evitar que el listener del document cierre el dropdown
+                        const targetLang = 'es'; // Por defecto español
                         vnode.state.isMultiLang = true;
                         vnode.state.currentLang = targetLang;
-                        // Solo guardamos el valor actual en "und", los demás vacíos
+                        vnode.state.langDropdownOpen = true;
                         const currentVal = vnode.state.lastEmittedValue || '';
                         const multiLangValue = {};
                         SUPPORTED_LANGS.forEach(lang => {
                             multiLangValue[lang] = (lang === targetLang) ? currentVal : '';
                         });
-
                         updateValue(vnode, multiLangValue);
                     }
-                }, '🌍')
+                }, [
+                    m('span', { class: 'lang-inactive-text' }, 'Idioma'),
+                    m('span', {
+                        class: 'lang-inactive-icon',
+                        'aria-hidden': 'true',
+                        style: 'margin-left: 0.25rem;'
+                    }, '🌍')
+                ])
             );
         }
 
@@ -1256,17 +1404,17 @@ export const NativeRichEditor = {
         }, [
             // Bloque A: Toolbar con grupos de botones
             m('div', { class: 'native-rich-editor__toolbar', role: 'toolbar' }, [
-                m('div', { key: 'toolbar-left', style: 'display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap;' }, leftGroup),
-                m('div', { key: 'toolbar-spacer', style: 'flex: 1;' }), // Espaciador que empuja
-                m('div', { key: 'toolbar-right', style: 'display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap;' }, rightGroup)
+                m('div', { style: 'display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap;' }, leftGroup),
+                m('div', { style: 'flex: 1;' }), // Espaciador que empuja
+                m('div', { style: 'display: flex; gap: 0.25rem; align-items: center; flex-wrap: wrap;' }, rightGroup)
             ]),
 
             // Bloque B: CONTENEDOR AISLADO PARA LOS EDITORES (Soluciona el crasheo)
             // Al meter los elementos con Key dentro de su propio contenedor exclusivo, Mithril no se confunde
             m('div', { class: 'native-rich-editor__body-wrapper', style: 'position: relative;' }, [
-                isSourceView 
+                isSourceView
                 ? m('div', {
-                    key: 'source-view-' + vnode.state.editorId, // Key permitida aquí
+                    id: 'codemirror-container-' + vnode.state.editorId,
                     class: 'native-rich-editor__source-wrapper',
                     style: 'height: 400px; width: 100%; display: block;',
                     oncreate: (vnode2) => {
@@ -1280,9 +1428,8 @@ export const NativeRichEditor = {
                             vnode.state.codeMirrorEditor = null;
                         }
                     }
-                }) 
+                })
                 : m('div', {
-                    key: 'visual-view-' + vnode.state.editorId, // Key permitida aquí
                     class: 'native-rich-editor__surface tiptap-wrapper'
                 }, [
                     m('div', {

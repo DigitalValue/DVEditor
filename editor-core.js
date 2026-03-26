@@ -34,7 +34,8 @@ export const ICONS = {
     trash: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
     paragraph: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="18" x2="15" y2="18"></line></svg>',
     bulletList: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"></line><line x1="8" y1="12" x2="21" y2="12"></line><line x1="8" y1="18" x2="21" y2="18"></line><circle cx="4" cy="6" r="1" fill="currentColor"></circle><circle cx="4" cy="12" r="1" fill="currentColor"></circle><circle cx="4" cy="18" r="1" fill="currentColor"></circle></svg>',
-    orderedList: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><path d="M4 6h1v4"></path><path d="M4 10h2"></path><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path></svg>'
+    orderedList: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"></line><line x1="10" y1="12" x2="21" y2="12"></line><line x1="10" y1="18" x2="21" y2="18"></line><path d="M4 6h1v4"></path><path d="M4 10h2"></path><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"></path></svg>',
+    translate: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>'
 };
 
 export const TOOLBAR_COMMANDS = [
@@ -225,5 +226,45 @@ export function updateActiveState(state, editor = null) {
         TOOLBAR_COMMANDS.forEach(cmd => {
             state.active[cmd.id] = false;
         });
+    }
+}
+
+// ============================================
+// API DE TRADUCCION SALT (Traducir ES -> VA)
+// ============================================
+
+/**
+ * Traduce texto usando la API SALT de la Generalitat Valenciana
+ * @param {string} text - Texto a traducir
+ * @param {string} mode - Modo de traduccion (default: spa-cat_valencia)
+ * @returns {Promise<string>} Texto traducido o mensaje de error
+ */
+export async function translateSALT(text, mode = "spa-cat_valencia") {
+    if (!text || !mode) {
+        return "ERROR: No hay texto que traducir";
+    }
+
+    let data = {
+        mode: mode,
+        data: text
+    };
+
+    try {
+        let query = await fetch('https://innovacion.gva.es/pai_bus_inno/SALT/SaltService_REST_v2_00/api/translate', {
+            method: "POST",
+            'headers': {
+                'x-api-key': 'eddd4e6820ff6e4d3f033cc0bcd63f45',
+                'Content-Type': 'application/json',
+                'Authorization': 'Basic c2FsdHVzdTpwd2RwYWkx',
+                'aplicacion': 'SALT'
+            },
+            body: JSON.stringify(data)
+        });
+        let json = await query.json();
+        return json.data;
+    }
+    catch (error) {
+        console.error("Error traduciendo con SALT:", error);
+        return "ERROR AL TRADUCIR";
     }
 }
